@@ -1,0 +1,10 @@
+import { createPublicClient, http, parseAbi } from "viem";
+import { arbitrumSepolia } from "viem/chains";
+const parent = createPublicClient({ chain: arbitrumSepolia, transport: http("https://sepolia-rollup.arbitrum.io/rpc") });
+const child = createPublicClient({ transport: http("https://testnet-v2.xai-chain.net/rpc") });
+const a = parseAbi(["function getGateway(address) view returns (address)", "function calculateL2TokenAddress(address) view returns (address)", "function symbol() view returns (string)"]);
+const ROUTER = "0x185b868DBBF41554465fcb99C6FAb9383E15f47A", USDG = "0xFFC95faa3d63Cde504a05B567C600B78C0b41892";
+const gw = await parent.readContract({ address: ROUTER, abi: a, functionName: "getGateway", args: [USDG] });
+const l3 = await parent.readContract({ address: ROUTER, abi: a, functionName: "calculateL2TokenAddress", args: [USDG] });
+const code = await child.getCode({ address: l3 });
+console.log({ gatewayForUSDG: gw, l3Token: l3, deployedOnL3: !!code && code !== "0x" });

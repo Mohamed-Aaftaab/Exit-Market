@@ -9,8 +9,11 @@
     "test:sol": "hardhat test solidity"
   },
   "devDependencies": {
+    "@arbitrum/sdk": "^4.1.0",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
     "@types/node": "^26.6.3",
+    "dotenv": "^18.0.4",
+    "ethers": "^5.8.0",
     "forge-std": "github:foundry-rs/forge-std#v1.10.0",
     "hardhat": "^3.18.0",
     "typescript": "^7.0.2",

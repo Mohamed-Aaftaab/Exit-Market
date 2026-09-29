@@ -37,6 +37,8 @@ interface IInbox {
 
 interface IBridge {
     function rollup() external view returns (address);
+
+    function allowedOutboxes(address outbox) external view returns (bool);
 }
 
 interface IOutbox {
@@ -79,4 +81,9 @@ interface ILegacyRollup {
     function getNode(uint64 nodeNum) external view returns (LegacyNode memory);
 
     function latestConfirmed() external view returns (uint64);
+
+    /// @dev Rejected nodes are NOT deleted; only this counter moves past them.
+    function firstUnresolvedNode() external view returns (uint64);
+
+    function latestNodeCreated() external view returns (uint64);
 }

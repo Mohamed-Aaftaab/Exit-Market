@@ -4,3 +4,6 @@ cache/
 coverage/
 .env
 *.pdf
+deployments/*.local.json
+web/.next/
+web/node_modules/

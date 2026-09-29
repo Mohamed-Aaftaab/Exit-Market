@@ -61,10 +61,13 @@ contract MockOutbox {
     }
 }
 
-/// @dev Minimal pre-BOLD rollup: stores nodes and exposes the outbox.
+/// @dev Minimal pre-BOLD rollup: stores nodes and exposes the outbox. Rejected nodes are NOT deleted
+///      (RollupCore._rejectNextNode only bumps _firstUnresolvedNode).
 contract MockLegacyRollup {
     address public outbox;
     uint64 public latestConfirmed;
+    uint64 public firstUnresolvedNode = 1;
+    uint64 public latestNodeCreated;
     mapping(uint64 => LegacyNode) private _nodes;
 
     constructor(address outbox_) {
@@ -73,6 +76,22 @@ contract MockLegacyRollup {
 
     function setNodeConfirmData(uint64 nodeNum, bytes32 confirmData) external {
         _nodes[nodeNum].confirmData = confirmData;
+    }
+
+    function setNodeDeadline(uint64 nodeNum, uint64 deadlineBlock) external {
+        _nodes[nodeNum].deadlineBlock = deadlineBlock;
+    }
+
+    function setFirstUnresolvedNode(uint64 n) external {
+        firstUnresolvedNode = n;
+    }
+
+    function setLatestNodeCreated(uint64 n) external {
+        latestNodeCreated = n;
+    }
+
+    function setLatestConfirmed(uint64 n) external {
+        latestConfirmed = n;
     }
 
     function deleteNode(uint64 nodeNum) external {
@@ -84,11 +103,23 @@ contract MockLegacyRollup {
     }
 }
 
+/// @dev allowedOutboxes defaults to true for the rollup's own outbox unless explicitly overridden.
 contract MockBridge {
     address public rollup;
+    mapping(address => uint8) private _override; // 0 = default, 1 = allowed, 2 = disallowed
 
     constructor(address rollup_) {
         rollup = rollup_;
+    }
+
+    function setAllowedOutbox(address outbox, bool allowed) external {
+        _override[outbox] = allowed ? 1 : 2;
+    }
+
+    function allowedOutboxes(address outbox) external view returns (bool) {
+        uint8 o = _override[outbox];
+        if (o != 0) return o == 1;
+        return MockLegacyRollup(rollup).outbox() == outbox;
     }
 }
 
@@ -119,6 +150,11 @@ contract MockExtendedGateway {
 
     constructor(address counterpart_, address inbox_) {
         counterpartGateway = counterpart_;
+        inbox = inbox_;
+    }
+
+    /// @dev Test hook: simulates a proxy upgrade that swaps verification sources.
+    function setInbox(address inbox_) external {
         inbox = inbox_;
     }
 
