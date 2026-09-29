@@ -4,7 +4,7 @@
  * Usage: node scripts/dev/makeArbOneFixture.ts
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createPublicClient, decodeAbiParameters, http, parseAbi, parseAbiItem, type Hex } from "viem";
+import { createPublicClient, decodeAbiParameters, decodeEventLog, encodeAbiParameters, http, parseAbi, parseAbiItem, toEventSelector, type Hex } from "viem";
 import { arbitrum, mainnet } from "viem/chains";
 
 const ETH_RPC = process.env.ETH_RPC_URL ?? "https://ethereum-rpc.publicnode.com";
@@ -35,10 +35,26 @@ const outbox = parseAbi(["function isSpent(uint256) view returns (bool)"]);
 
 // 1. Newest PENDING, unchallenged assertion on Ethereum.
 const ethHead = await eth.getBlockNumber();
-let assertions: Awaited<ReturnType<typeof eth.getLogs<typeof ASSERTION_CREATED>>> = [];
-for (let back = 2_000n; assertions.length === 0 && back <= 16_000n; back *= 2n) {
-  assertions = await eth.getLogs({ address: ROLLUP, event: ASSERTION_CREATED, fromBlock: ethHead - back, toBlock: ethHead });
+// ~6.4 days of assertions (confirm period 45,818 blocks) so the whole pending chain is available.
+const CHUNK = 5_000n;
+const WINDOW = 55_000n;
+// Public full nodes refuse old logs ("archive"); the Blockscout log API serves them for free.
+type RawLog = { data: Hex; topics: Hex[]; blockNumber: Hex };
+const assertions: { args: ReturnType<typeof decodeEventLog<[typeof ASSERTION_CREATED]>>["args"]; blockNumber: bigint }[] = [];
+for (let from = ethHead - WINDOW; from <= ethHead; from += CHUNK) {
+  const to = from + CHUNK - 1n > ethHead ? ethHead : from + CHUNK - 1n;
+  const url = `https://eth.blockscout.com/api?module=logs&action=getLogs&address=${ROLLUP}&topic0=${toEventSelector(ASSERTION_CREATED)}&fromBlock=${from}&toBlock=${to}`;
+  let json: { result?: RawLog[] } = {};
+  for (let attempt = 0; attempt < 5 && !Array.isArray(json.result); attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 2_000 * attempt));
+    json = await (await fetch(url)).json();
+  }
+  for (const l of json.result ?? []) {
+    const topics = l.topics.filter(Boolean) as [Hex, ...Hex[]];
+    assertions.push({ args: decodeEventLog({ abi: [ASSERTION_CREATED], data: l.data, topics }).args, blockNumber: BigInt(l.blockNumber) });
+  }
 }
+console.log(`Collected ${assertions.length} AssertionCreated events`);
 let chosen: (typeof assertions)[number] | undefined;
 for (const a of [...assertions].reverse()) {
   const node = await eth.readContract({ address: ROLLUP, abi: getAssertion, functionName: "getAssertion", args: [a.args.assertionHash!] });
@@ -46,6 +62,25 @@ for (const a of [...assertions].reverse()) {
   if (node.status === 1 && parent.secondChildBlock === 0n) { chosen = a; break; }
 }
 if (!chosen) throw new Error("No pending unchallenged assertion found");
+
+// Pending chain from the chosen assertion back to (excluding) the latest confirmed ancestor, oldest first.
+const byHash = new Map(assertions.map((a) => [a.args.assertionHash!, a]));
+const chain: typeof assertions = [];
+for (let cursor: (typeof assertions)[number] | undefined = chosen; cursor; ) {
+  chain.unshift(cursor);
+  const parentHash = cursor.args.parentAssertionHash!;
+  const parent = await eth.readContract({ address: ROLLUP, abi: getAssertion, functionName: "getAssertion", args: [parentHash] });
+  if (parent.status === 2) break;
+  cursor = byHash.get(parentHash);
+  if (!cursor) throw new Error(`Pending ancestor ${parentHash} outside the log window`);
+}
+console.log(`Pending chain length: ${chain.length}`);
+const CHAIN_TUPLE = [{ type: "tuple[]", components: [
+  { name: "parent", type: "bytes32" },
+  { name: "afterState", type: "tuple", components: ASSERTION_CREATED.inputs[2].components![2].components },
+  { name: "inboxAcc", type: "bytes32" },
+] }] as const;
+const chainHex = encodeAbiParameters(CHAIN_TUPLE as never, [chain.map((c) => ({ parent: c.args.parentAssertionHash!, afterState: c.args.assertion!.afterState, inboxAcc: c.args.afterInboxBatchAcc! }))] as never);
 const after = chosen.args.assertion!.afterState;
 const [blockHash, sendRoot] = after.globalState.bytes32Vals;
 const arbBlock = (await arb.request({ method: "eth_getBlockByHash" as never, params: [blockHash, false] as never })) as { sendCount: Hex; sendRoot: Hex; number: Hex };
@@ -88,6 +123,17 @@ library ArbOneExitFixture {
     bytes32 internal constant ASSERTION_HASH = ${chosen.args.assertionHash};
     bytes32 internal constant PARENT_ASSERTION_HASH = ${chosen.args.parentAssertionHash};
     bytes32 internal constant INBOX_ACC = ${chosen.args.afterInboxBatchAcc};
+
+    struct ChainLink {
+        bytes32 parent;
+        BoldAssertionState afterState;
+        bytes32 inboxAcc;
+    }
+
+    /// @notice Every pending assertion from the latest confirmed one down to ASSERTION_HASH, oldest first.
+    function chain() internal pure returns (ChainLink[] memory) {
+        return abi.decode(hex"${chainHex.slice(2)}", (ChainLink[]));
+    }
 
     function afterState() internal pure returns (BoldAssertionState memory s) {
         s.globalState = BoldGlobalState({

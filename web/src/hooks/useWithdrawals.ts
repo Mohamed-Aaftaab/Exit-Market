@@ -7,6 +7,7 @@ import type { Address, Hash, PublicClient } from "viem";
 import { findLatestNode, type AssertedNode } from "@shared/exitProof.ts";
 import {
   ARBITRUM_SEPOLIA,
+  DEPLOYMENT,
   XAI_TESTNET,
   outboxAbi,
   parentGatewayAbi,
@@ -18,6 +19,7 @@ import { xaiTestnet } from "@/lib/wagmi";
 export type WithdrawalStatus =
   | "awaiting-assertion" // not yet committed by any rollup node: can't be proven yet
   | "sellable" // committed by a node, unspent, still owned by the user
+  | "gasless" // withdrawn to the intent router: the relayer sells it, no action needed
   | "transferred" // exit redirected (sold) to someone else
   | "claimed"; // executed through the Outbox
 
@@ -39,6 +41,7 @@ export interface WithdrawalsData {
 
 function statusOf(user: Address, owner: Address, spent: boolean, asserted: boolean): WithdrawalStatus {
   if (spent) return "claimed";
+  if (DEPLOYMENT.router && owner.toLowerCase() === DEPLOYMENT.router.toLowerCase()) return "gasless";
   if (owner.toLowerCase() !== user.toLowerCase()) return "transferred";
   return asserted ? "sellable" : "awaiting-assertion";
 }

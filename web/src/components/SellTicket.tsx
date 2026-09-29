@@ -60,6 +60,14 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
       </p>
     );
   }
+  if (row.status === "gasless") {
+    return (
+      <p className="p-6 text-sm text-muted">
+        This is a fast exit: the relayer sells it to the vault as soon as it is asserted and the USDG lands in
+        your wallet on Arbitrum. Nothing else to do.
+      </p>
+    );
+  }
   if (row.status !== "sellable") {
     return <p className="p-6 text-sm text-muted">This exit has already been sold or claimed.</p>;
   }

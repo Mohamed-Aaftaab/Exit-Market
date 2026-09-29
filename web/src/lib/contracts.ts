@@ -17,6 +17,7 @@ function envAddress(value: string | undefined): Address | undefined {
 export const DEPLOYMENT = {
   market: envAddress(process.env.NEXT_PUBLIC_EXIT_MARKET),
   vault: envAddress(process.env.NEXT_PUBLIC_EXIT_VAULT),
+  router: envAddress(process.env.NEXT_PUBLIC_EXIT_INTENT_ROUTER),
 } as const;
 
 export const USDG_DECIMALS = 6;
@@ -62,6 +63,11 @@ export const parentGatewayAbi = parseAbi([
 export const childRouterAbi = parseAbi([
   "function outboundTransfer(address l1Token, address to, uint256 amount, bytes data) payable returns (bytes)",
 ]);
+
+/** Flat fee paid to whoever relays a gasless exit (USDG, 6 decimals). */
+export const RELAYER_FEE = 20_000n; // 0.02 USDG
+/** Seller-side slippage bound for gasless orders: accept at least 99% of face value (minus relayer fee). */
+export const GASLESS_MIN_BPS = 9_900n;
 
 export const withdrawalInitiatedEvent = parseAbi([
   "event WithdrawalInitiated(address l1Token, address indexed _from, address indexed _to, uint256 indexed _l2ToL1Id, uint256 _exitNum, uint256 _amount)",

@@ -32,6 +32,14 @@ contract ArbOneBoldForkTest is Test {
         market.allowGateway(address(gateway), verifier);
     }
 
+    /// @dev Registers every real pending assertion from the latest confirmed one down to the target.
+    function _registerPendingChain() private returns (bytes32 last) {
+        F.ChainLink[] memory links = F.chain();
+        for (uint256 i = 0; i < links.length; ++i) {
+            last = verifier.register(F.ROLLUP, links[i].parent, links[i].afterState, links[i].inboxAcc);
+        }
+    }
+
     function test_arbOne_realGatewayDerivesBoldRollupAndOutbox() public {
         if (!enabled) return vm.skip(true);
         IExitMarket.GatewayConfig memory cfg = market.getGatewayConfig(address(gateway));
@@ -41,8 +49,9 @@ contract ArbOneBoldForkTest is Test {
 
     function test_arbOne_registersRealPendingBoldAssertion() public {
         if (!enabled) return vm.skip(true);
-        bytes32 h = verifier.register(F.ROLLUP, F.PARENT_ASSERTION_HASH, F.afterState(), F.INBOX_ACC);
+        bytes32 h = _registerPendingChain();
         assertEq(h, F.ASSERTION_HASH);
+        assertGt(F.chain().length, 1); // a real multi-level pending chain is walked
 
         ExitClaim memory c = F.claim();
         (bool valid, bool pending, uint64 deadline) =
@@ -54,7 +63,7 @@ contract ArbOneBoldForkTest is Test {
 
     function test_arbOne_realPendingWithdrawalIsProvenAndListed() public {
         if (!enabled) return vm.skip(true);
-        verifier.register(F.ROLLUP, F.PARENT_ASSERTION_HASH, F.afterState(), F.INBOX_ACC);
+        _registerPendingChain();
         ExitClaim memory c = F.claim();
         bytes memory data =
             abi.encode(IExitMarket.Action.LIST, c, abi.encode(uint256(1e6), uint64(block.timestamp + 1 days)));
@@ -68,6 +77,14 @@ contract ArbOneBoldForkTest is Test {
         assertEq(l.exit.amount, c.amount);
         (address owner,) = gateway.getExternalCall(F.EXIT_NUM, c.initialDestination, "");
         assertEq(owner, address(market));
+    }
+
+    function test_arbOne_targetRegisteredButAncestorsMissingIsRejected() public {
+        if (!enabled) return vm.skip(true);
+        verifier.register(F.ROLLUP, F.PARENT_ASSERTION_HASH, F.afterState(), F.INBOX_ACC);
+        (bool valid,,) =
+            verifier.verifyRoot(F.ROLLUP, 0x0B9857ae2D4A3DBe74ffE1d7DF045bb7F96E4840, F.claim().sendRoot, 0, F.ASSERTION_HASH);
+        assertFalse(valid); // fail closed: every pending ancestor must be known and unchallenged
     }
 
     function test_arbOne_unregisteredAssertionIsRejected() public {

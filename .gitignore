@@ -7,3 +7,4 @@ coverage/
 deployments/*.local.json
 web/.next/
 web/node_modules/
+stylus/*/target/

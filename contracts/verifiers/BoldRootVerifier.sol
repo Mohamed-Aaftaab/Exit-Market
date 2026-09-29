@@ -13,12 +13,15 @@ import {IRootVerifier} from "../interfaces/IRootVerifier.sol";
 ///      (RollupLib.assertionHash, verified against live Arbitrum Sepolia assertions). Registration is
 ///      permissionless and trustless. In an ExitClaim for a BOLD chain, `blockHash` carries the assertion
 ///      hash and `nodeNum` is ignored.
-///      Conservative rule: a pending assertion is accepted only while its parent has no rival child, i.e. it
-///      is unchallenged. During a dispute nothing from that level is accepted until it resolves.
+///      Conservative rule: a pending assertion is accepted only if EVERY pending ancestor up to the latest
+///      confirmed one is registered and unchallenged (no rival child at any level). BOLD lets assertions build
+///      on pending parents, so checking only the immediate parent would accept descendants of a losing branch.
 contract BoldRootVerifier is IRootVerifier {
     uint8 private constant STATUS_NONE = 0;
     uint8 private constant STATUS_PENDING = 1;
     uint8 private constant STATUS_CONFIRMED = 2;
+    /// @notice Bound on pending-chain walks. Arbitrum One keeps ~150 pending assertions (6.4 days, ~hourly).
+    uint256 public constant MAX_PENDING_DEPTH = 512;
 
     struct Registered {
         bytes32 parent;
@@ -39,6 +42,7 @@ contract BoldRootVerifier is IRootVerifier {
     error NotSiblings(bytes32 a, bytes32 b);
     error SiblingNotConfirmed(bytes32 sibling);
     error NotPending(bytes32 assertionHash);
+    error NotDescendant(bytes32 assertionHash, bytes32 ancestor);
 
     /// @notice Register a BOLD assertion from its preimage (as emitted in AssertionCreated).
     /// @return assertionHash the recomputed hash, which the rollup must know
@@ -62,17 +66,24 @@ contract BoldRootVerifier is IRootVerifier {
         emit AssertionRegistered(rollup, assertionHash, sendRoot);
     }
 
-    /// @notice Prove a pending assertion lost: a registered sibling (same parent) is confirmed.
-    function markRejected(address rollup, bytes32 assertionHash, bytes32 confirmedSibling) external {
+    /// @notice Prove an assertion is on a losing branch: it is (or descends from) a pending `losingAncestor`
+    ///         whose registered sibling `confirmedSibling` (same parent) is confirmed.
+    /// @param losingAncestor may equal `assertionHash`
+    function markRejected(address rollup, bytes32 assertionHash, bytes32 losingAncestor, bytes32 confirmedSibling)
+        external
+    {
         Registered storage a = assertions[rollup][assertionHash];
+        Registered storage l = assertions[rollup][losingAncestor];
         Registered storage s = assertions[rollup][confirmedSibling];
         if (!a.exists) revert NotRegistered(assertionHash);
+        if (!l.exists) revert NotRegistered(losingAncestor);
         if (!s.exists) revert NotRegistered(confirmedSibling);
-        if (assertionHash == confirmedSibling || a.parent != s.parent) revert NotSiblings(assertionHash, confirmedSibling);
+        if (losingAncestor == confirmedSibling || l.parent != s.parent) revert NotSiblings(losingAncestor, confirmedSibling);
+        if (!_descendsFrom(rollup, assertionHash, losingAncestor)) revert NotDescendant(assertionHash, losingAncestor);
 
         IBoldRollup r = IBoldRollup(rollup);
         if (r.getAssertion(confirmedSibling).status != STATUS_CONFIRMED) revert SiblingNotConfirmed(confirmedSibling);
-        if (r.getAssertion(assertionHash).status != STATUS_PENDING) revert NotPending(assertionHash);
+        if (r.getAssertion(losingAncestor).status != STATUS_PENDING) revert NotPending(losingAncestor);
 
         rejectedRoots[rollup][a.sendRoot] = true;
         emit AssertionRejected(rollup, assertionHash, confirmedSibling);
@@ -93,10 +104,35 @@ contract BoldRootVerifier is IRootVerifier {
         IBoldRollup r = IBoldRollup(rollup);
         BoldAssertionNode memory node = r.getAssertion(witness);
         if (node.status != STATUS_PENDING) return (false, true, 0);
-        // Unchallenged only: a rival child of the same parent means a dispute is in progress.
-        if (r.getAssertion(a.parent).secondChildBlock != 0) return (false, true, 0);
+        if (!_unchallengedToConfirmed(r, rollup, witness)) return (false, true, 0);
 
         return (true, true, node.createdAtBlock + r.confirmPeriodBlocks());
+    }
+
+    /// @dev Walks pending ancestors (all must be registered) until a confirmed one; every level must have no
+    ///      rival child. Fails closed on unregistered links, non-pending/non-confirmed states or excess depth.
+    function _unchallengedToConfirmed(IBoldRollup r, address rollup, bytes32 cursor) private view returns (bool) {
+        for (uint256 depth = 0; depth < MAX_PENDING_DEPTH; ++depth) {
+            Registered storage link = assertions[rollup][cursor];
+            if (!link.exists) return false;
+            if (r.getAssertion(link.parent).secondChildBlock != 0) return false; // dispute at this level
+            uint8 parentStatus = r.getAssertion(link.parent).status;
+            if (parentStatus == STATUS_CONFIRMED) return true;
+            if (parentStatus != STATUS_PENDING) return false;
+            cursor = link.parent;
+        }
+        return false;
+    }
+
+    /// @dev True if `ancestor` is `node` or reachable from it through registered parent links (bounded).
+    function _descendsFrom(address rollup, bytes32 node, bytes32 ancestor) private view returns (bool) {
+        for (uint256 depth = 0; depth < MAX_PENDING_DEPTH; ++depth) {
+            if (node == ancestor) return true;
+            Registered storage link = assertions[rollup][node];
+            if (!link.exists) return false;
+            node = link.parent;
+        }
+        return false;
     }
 
     /// @inheritdoc IRootVerifier

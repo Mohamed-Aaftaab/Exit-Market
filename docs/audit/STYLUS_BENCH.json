@@ -1,0 +1,26 @@
+{
+  "solidity": "0xa36aaa3ed116fe25f56bf3acf24ccdd9688981ce",
+  "stylus": "0x30ac015003186f187b9a11fff2781d55cc9e1394",
+  "rows": [
+    {
+      "depth": 7,
+      "solidity": "37780",
+      "stylus": "69002"
+    },
+    {
+      "depth": 18,
+      "solidity": "54290",
+      "stylus": "80892"
+    },
+    {
+      "depth": 32,
+      "solidity": "75497",
+      "stylus": "96681"
+    },
+    {
+      "depth": 64,
+      "solidity": "123016",
+      "stylus": "131713"
+    }
+  ]
+}
