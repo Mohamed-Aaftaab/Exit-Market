@@ -79,6 +79,42 @@ contract ArbOneBoldForkTest is Test {
         assertEq(owner, address(market));
     }
 
+    /// @dev Gas of the full ancestor walk over the real pending chain, and of the whole listing hook on top of it.
+    function test_arbOne_gas_fullPendingChainWalk() public {
+        if (!enabled) return vm.skip(true);
+        _registerPendingChain();
+        ExitClaim memory c = F.claim();
+        address outbox = 0x0B9857ae2D4A3DBe74ffE1d7DF045bb7F96E4840;
+        _coolAll(outbox);
+
+        uint256 before = gasleft();
+        (bool valid,,) = verifier.verifyRoot(F.ROLLUP, outbox, c.sendRoot, 0, F.ASSERTION_HASH);
+        uint256 walkGas = before - gasleft();
+        assertTrue(valid);
+
+        bytes memory data =
+            abi.encode(IExitMarket.Action.LIST, c, abi.encode(uint256(1e6), uint64(block.timestamp + 1 days)));
+        _coolAll(outbox);
+        vm.prank(c.initialDestination);
+        before = gasleft();
+        gateway.transferExitAndCall(F.EXIT_NUM, c.initialDestination, address(market), "", data);
+        uint256 listGas = before - gasleft();
+
+        emit log_named_uint("pending chain depth", F.chain().length);
+        emit log_named_uint("verifyRoot gas (cold)", walkGas);
+        emit log_named_uint("transferExitAndCall LIST gas", listGas);
+        assertLt(listGas, 3_000_000);
+    }
+
+    /// @dev Registration warmed every slot; mark them cold so the measurement matches a fresh transaction.
+    function _coolAll(address outbox) private {
+        vm.cool(address(verifier));
+        vm.cool(address(market));
+        vm.cool(address(gateway));
+        vm.cool(F.ROLLUP);
+        vm.cool(outbox);
+    }
+
     function test_arbOne_targetRegisteredButAncestorsMissingIsRejected() public {
         if (!enabled) return vm.skip(true);
         verifier.register(F.ROLLUP, F.PARENT_ASSERTION_HASH, F.afterState(), F.INBOX_ACC);
