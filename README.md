@@ -76,6 +76,13 @@ node scripts/demo/sellExit.ts <withdrawal-tx-hash>
 
 ## Deployments (Arbitrum Sepolia)
 
-_Filled in after deployment._
+| Contract | Address |
+|---|---|
+| ExitMarket | [`0xd112ea99a2664d65de013fcaf3a6ce1604a8c51b`](https://sepolia.arbiscan.io/address/0xd112ea99a2664d65de013fcaf3a6ce1604a8c51b) |
+| ExitVault (evUSDG) | [`0x4b1f94e45ff6fc5b3c105806d2ca4e2bede6afed`](https://sepolia.arbiscan.io/address/0x4b1f94e45ff6fc5b3c105806d2ca4e2bede6afed) |
+| LegacyRootVerifier | [`0xb06028304345d9ed295d812aca5f1430ec9808c9`](https://sepolia.arbiscan.io/address/0xb06028304345d9ed295d812aca5f1430ec9808c9) |
+| Payment token (Paxos USDG) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |
+
+Allowlisted gateways: Xai Testnet standard `0xCcB451…1256` and custom `0x04e14E…5D88` (sources derived on-chain).
 
 Built for the Arbitrum Open House Singapore Online Buildathon. Payments in Paxos **USDG**.
