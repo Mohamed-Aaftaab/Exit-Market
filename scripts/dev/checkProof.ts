@@ -28,3 +28,5 @@ console.log("REAL OUTBOX root == sendRoot:", root === p.sendRoot);
 console.log("node.confirmData == keccak(blockHash,sendRoot):", node.confirmData === keccak256(encodePacked(["bytes32","bytes32"],[p.blockHash,p.sendRoot])));
 console.log("minimal path (index < 2**len):", p.index < 2n ** BigInt(p.merkleProof.length));
 console.log("isSpent(index):", await parent.readContract({ address: OUTBOX, abi: ob, functionName: "isSpent", args: [p.index] }));
+import { exitItemHash } from "../lib/hookData.ts";
+console.log("client exitItemHash == real Outbox.calculateItemHash:", exitItemHash(w, last.address, PARENT_GW as `0x${string}`) === item);

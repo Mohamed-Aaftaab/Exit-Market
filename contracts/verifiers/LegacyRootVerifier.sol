@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {ILegacyRollup, IOutbox, LegacyNode} from "../interfaces/IArbitrumBridge.sol";
-import {IRootVerifier} from "../interfaces/IExitMarket.sol";
+import {IRootVerifier} from "../interfaces/IRootVerifier.sol";
 
 /// @title LegacyRootVerifier
 /// @notice Authenticates an Outbox send root for pre-BOLD Arbitrum rollups (RollupCore), which most

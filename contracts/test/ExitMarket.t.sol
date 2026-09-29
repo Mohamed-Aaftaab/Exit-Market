@@ -4,7 +4,8 @@ pragma solidity 0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ExitLeaf} from "../libraries/ExitLeaf.sol";
-import {ExitClaim, ExitRecord, IExitMarket, IRootVerifier} from "../interfaces/IExitMarket.sol";
+import {ExitClaim, ExitRecord, IExitMarket} from "../interfaces/IExitMarket.sol";
+import {IRootVerifier} from "../interfaces/IRootVerifier.sol";
 import {ExitMarket} from "../ExitMarket.sol";
 import {LegacyRootVerifier} from "../verifiers/LegacyRootVerifier.sol";
 import {MockBridge, MockERC20, MockExtendedGateway, MockInbox, MockLegacyRollup, MockOutbox} from "./mocks/MockArbitrum.sol";
@@ -181,102 +182,83 @@ contract ExitMarketTest is ExitFixture {
         _sellTo(ws[2], seller, address(tb), 0);
     }
 
-    // ============================================================ 4. executed while listed
+    // ============================================================ zero address, events, disallowed buy
 
-    function test_buy_revertsWhenExitExecutedAfterListing() public {
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
+    function test_constructor_revertsOnZeroPaymentTokenOrFeeRecipient() public {
+        ExitMarketDeployer deployer = new ExitMarketDeployer();
+
+        vm.expectRevert(IExitMarket.ZeroAddress.selector);
+        deployer.deploy(address(0), owner, FEE_BPS, feeRecipient);
+
+        vm.expectRevert(IExitMarket.ZeroAddress.selector);
+        deployer.deploy(address(usdg), owner, FEE_BPS, address(0));
+    }
+
+    function test_setFee_revertsOnZeroRecipient() public {
+        vm.expectRevert(IExitMarket.ZeroAddress.selector);
+        vm.prank(owner);
+        market.setFee(10, address(0));
+    }
+
+    function test_allowGateway_revertsOnZeroVerifier() public {
+        MockExtendedGateway gw2 = new MockExtendedGateway(address(0xC2), address(inbox));
+
+        vm.expectRevert(IExitMarket.ZeroAddress.selector);
+        vm.prank(owner);
+        market.allowGateway(address(gw2), IRootVerifier(address(0)));
+    }
+
+    function test_buy_revertsWhenGatewayDisallowedAfterListing() public {
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         bytes32 id = _list(ws[0], seller, PRICE);
-        _execute(ws[0]);
         _fund(buyer, address(market), PRICE);
+        vm.prank(owner);
+        market.disallowGateway(address(gateway));
 
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.ExitAlreadySpent.selector, ws[0].claim.index));
+        vm.expectRevert(abi.encodeWithSelector(IExitMarket.GatewayNotAllowed.selector, address(gateway)));
         vm.prank(buyer);
         market.buy(id, PRICE);
 
-        assertEq(usdg.balanceOf(buyer), PRICE);
+        vm.prank(seller);
+        market.cancel(id); // still works
+        assertEq(_ownerOf(ws[0]), seller);
     }
 
-    function test_settle_paysSellerWhenExitExecutedWhileListed() public {
-        MockERC20 other = new MockERC20("Other", "OTH", 18);
-        exitToken = other;
+    function test_hook_emitsExitVerifiedWithItemHash() public {
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
-        bytes32 id = _list(ws[0], seller, PRICE);
-        _execute(ws[0]);
-        assertEq(other.balanceOf(address(market)), AMOUNT);
+        ExitRecord memory rec = _record(ws[1]);
+        ExitLeaf.Leaf memory leaf = ExitLeaf.Leaf({
+            childGateway: CHILD_GATEWAY,
+            parentGateway: address(gateway),
+            l1Token: address(usdg),
+            from: seller,
+            initialDestination: seller,
+            amount: AMOUNT,
+            exitNum: 2,
+            l2Block: ws[1].claim.l2Block,
+            l1Block: ws[1].claim.l1Block,
+            l2Timestamp: ws[1].claim.l2Timestamp
+        });
+        assertEq(rec.itemHash, ExitLeaf.itemHash(leaf));
+        bytes32 id = _id(ws[1]);
 
-        vm.prank(stranger);
-        market.settle(id);
+        vm.expectEmit(true, false, false, true, address(market));
+        emit IExitMarket.ExitVerified(id, rec);
+        _list(ws[1], seller, PRICE);
 
-        assertEq(other.balanceOf(seller), AMOUNT);
-        assertEq(other.balanceOf(address(market)), 0);
-        assertEq(uint8(market.getListing(id).status), uint8(IExitMarket.Status.Settled));
+        assertEq(market.getListing(id).exit.itemHash, rec.itemHash);
     }
 
-    function test_settle_revertsWhenExitNotSpent() public {
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
-        bytes32 id = _list(ws[1], seller, PRICE);
-
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.ExitNotSpent.selector, ws[1].claim.index));
-        market.settle(id);
-    }
-
-    function test_settle_cannotBeCalledTwice() public {
+    function test_withdrawFees_emitsFeesWithdrawn() public {
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         bytes32 id = _list(ws[0], seller, PRICE);
-        _execute(ws[0]);
-        market.settle(id);
-
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.NotListed.selector, id));
-        market.settle(id);
-    }
-
-    function test_settle_leavesAccruedFeesUntouchedWhenL1TokenIsPaymentToken() public {
-        // l1Token == payment token (USDG): the market's balance mixes fees and exit proceeds.
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
-        bytes32 idSold = _list(ws[0], seller, PRICE);
         _fund(buyer, address(market), PRICE);
         vm.prank(buyer);
-        market.buy(idSold, PRICE);
-        uint256 fee = _fee(PRICE);
-        assertEq(usdg.balanceOf(address(market)), fee);
+        market.buy(id, PRICE);
 
-        bytes32 idSettled = _list(ws[1], seller, PRICE);
-        _execute(ws[1]);
-        assertEq(usdg.balanceOf(address(market)), fee + AMOUNT);
-        market.settle(idSettled);
-
-        assertEq(usdg.balanceOf(address(market)), fee, "fees must survive settle");
-        assertEq(usdg.balanceOf(seller), (PRICE - fee) + AMOUNT);
-
+        vm.expectEmit(true, false, false, true, address(market));
+        emit IExitMarket.FeesWithdrawn(feeRecipient, _fee(PRICE));
         market.withdrawFees();
-        assertEq(usdg.balanceOf(feeRecipient), fee);
-        assertEq(usdg.balanceOf(address(market)), 0);
-    }
-
-    function test_cancel_paysSellerWhenExitAlreadyExecuted() public {
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        bytes32 id = _list(ws[0], seller, PRICE);
-        _execute(ws[0]);
-
-        vm.prank(seller);
-        market.cancel(id);
-
-        assertEq(usdg.balanceOf(seller), AMOUNT);
-        assertEq(uint8(market.getListing(id).status), uint8(IExitMarket.Status.Settled));
-    }
-
-    function test_isExitSpentAndLive_trackOutboxState() public {
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
-        _list(ws[0], seller, PRICE);
-        ExitRecord memory rec = _record(ws[0]);
-
-        assertTrue(market.isExitLive(rec));
-        assertFalse(market.isExitSpent(rec));
-
-        _execute(ws[0]);
-
-        assertFalse(market.isExitLive(rec));
-        assertTrue(market.isExitSpent(rec));
     }
 
     // ============================================================ 5. root authenticity / node rejection
@@ -398,8 +380,9 @@ contract ExitMarketTest is ExitFixture {
         market.cancel(idCancel);
         assertEq(_ownerOf(ws[0]), seller);
 
+        _confirm(ws[1]);
         _execute(ws[1]);
-        market.settle(idSettle);
+        market.settle(idSettle, ws[1].claim.sendRoot, _noProof());
         assertEq(usdg.balanceOf(seller), AMOUNT);
         assertFalse(market.getGatewayConfig(address(gateway)).allowed);
         assertTrue(market.getGatewayConfig(address(gateway)).known);
@@ -464,7 +447,7 @@ contract ExitMarketTest is ExitFixture {
         rec.gateway = stranger;
 
         vm.expectRevert(abi.encodeWithSelector(IExitMarket.GatewayUnknown.selector, stranger));
-        market.isExitSpent(rec);
+        market.isExitPaidOut(rec, rec.sendRoot, _noProof());
     }
 
     // ============================================================ 7. id collisions

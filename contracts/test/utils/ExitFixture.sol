@@ -239,6 +239,20 @@ abstract contract ExitFixture is Test {
             l1Token: w.claim.l1Token,
             amount: w.claim.amount,
             index: w.claim.index,
+            itemHash: ExitLeaf.itemHash(
+                ExitLeaf.Leaf({
+                    childGateway: MockExtendedGateway(w.gateway).counterpartGateway(),
+                    parentGateway: w.gateway,
+                    l1Token: w.claim.l1Token,
+                    from: w.claim.from,
+                    initialDestination: w.claim.initialDestination,
+                    amount: w.claim.amount,
+                    exitNum: w.exitNum,
+                    l2Block: w.claim.l2Block,
+                    l1Block: w.claim.l1Block,
+                    l2Timestamp: w.claim.l2Timestamp
+                })
+            ),
             sendRoot: w.claim.sendRoot,
             nodeNum: w.claim.nodeNum,
             blockHash: w.claim.blockHash,
@@ -250,6 +264,26 @@ abstract contract ExitFixture is Test {
     /// @dev Root becomes confirmed in the Outbox; the rollup node is irrelevant afterwards.
     function _confirm(Withdrawal memory w) internal {
         outbox.setRoot(w.claim.sendRoot, keccak256("confirmed"));
+    }
+
+    /// @dev Same item at the same index, committed under a DIFFERENT send root (e.g. the child chain's
+    ///      canonical tree after the node the exit was first proven against was rejected).
+    ///      The new root is registered as confirmed in the Outbox.
+    function _recommitConfirmed(Withdrawal memory w) internal returns (bytes32 root, bytes32[] memory proof) {
+        uint256 idx = w.claim.index;
+        bytes32[] memory items = new bytes32[](idx + 1);
+        for (uint256 i = 0; i < idx; ++i) {
+            items[i] = keccak256(abi.encode("filler", i));
+        }
+        items[idx] = _record(w).itemHash;
+        bytes32[][] memory proofs;
+        (root, proofs) = _buildTree(items);
+        proof = proofs[idx];
+        outbox.setRoot(root, keccak256("confirmed2"));
+    }
+
+    function _noProof() internal pure returns (bytes32[] memory) {
+        return new bytes32[](0);
     }
 
     function _fee(uint256 price) internal pure returns (uint256) {

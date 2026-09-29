@@ -4,7 +4,9 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {ExitClaim, ExitRecord, IExitMarket, IExitVault} from "../interfaces/IExitMarket.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {ExitClaim, ExitRecord, IExitMarket} from "../interfaces/IExitMarket.sol";
+import {IExitVault} from "../interfaces/IExitVault.sol";
 import {ExitVault} from "../ExitVault.sol";
 import {MockERC20} from "./mocks/MockArbitrum.sol";
 import {ExitFixture} from "./utils/ExitFixture.sol";
@@ -45,7 +47,7 @@ contract ExitVaultTest is ExitFixture {
         assertEq(vault.balanceOf(lp), shares);
         assertEq(vault.totalAssets(), LP_DEPOSIT);
         assertEq(vault.idleAssets(), LP_DEPOSIT);
-        assertEq(vault.outstandingFace(), 0);
+        assertEq(vault.outstandingCost(), 0);
         assertEq(vault.decimals(), 12);
         assertEq(vault.asset(), address(usdg));
     }
@@ -64,6 +66,7 @@ contract ExitVaultTest is ExitFixture {
 
     function test_redeem_returnsDepositWhenNothingHappened() public {
         uint256 shares = _deposit(LP_DEPOSIT);
+        vm.warp(block.timestamp + vault.SHARE_LOCK());
 
         vm.prank(lp);
         uint256 out = vault.redeem(shares, lp, lp);
@@ -154,9 +157,12 @@ contract ExitVaultTest is ExitFixture {
         assertEq(usdg.balanceOf(seller), price - fee);
         assertEq(usdg.balanceOf(address(market)), fee);
         assertEq(_ownerOf(ws[0]), address(vault));
-        assertEq(vault.outstandingFace(), AMOUNT);
+        assertEq(vault.outstandingCost(), price);
         assertEq(vault.idleAssets(), LP_DEPOSIT - price);
-        assertEq(vault.totalAssets(), assetsBefore + (AMOUNT - price));
+        assertEq(vault.totalAssets(), assetsBefore, "buying an exit must not raise totalAssets");
+        (bytes32 recordHash, uint256 cost) = vault.purchases(_id(ws[0]));
+        assertEq(recordHash, keccak256(abi.encode(_record(ws[0]))));
+        assertEq(cost, price);
         assertEq(usdg.balanceOf(address(vault)), LP_DEPOSIT - price);
     }
 
@@ -238,32 +244,72 @@ contract ExitVaultTest is ExitFixture {
 
     // ============================================================ collect / writeOff
 
-    function test_collect_movesFaceValueFromOutstandingToIdleAfterExecution() public {
+    /// @dev Vault buys `w` at its quote; returns the record and the price.
+    function _vaultBuys(Withdrawal memory w) private returns (ExitRecord memory rec, uint256 price) {
+        rec = _record(w);
+        price = vault.quote(rec);
+        _sellTo(w, w.claim.initialDestination, address(vault), price);
+    }
+
+    function test_collect_booksFaceValueAndReleasesCostAfterPayout() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        uint256 price = vault.quote(rec);
-        _sellTo(ws[0], seller, address(vault), price);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
         _execute(ws[0]); // outbox pays the vault, the current exit owner
         assertEq(usdg.balanceOf(address(vault)), LP_DEPOSIT - price + AMOUNT);
+        assertEq(vault.totalAssets(), LP_DEPOSIT, "discount not recognized before collect");
+        bytes32 key = _id(ws[0]);
 
+        vm.expectEmit(true, false, false, true, address(vault));
+        emit IExitVault.ExitCollected(key, AMOUNT, price);
         vm.prank(stranger);
-        vault.collect(rec);
+        vault.collect(rec, rec.sendRoot, _noProof());
 
-        assertEq(vault.outstandingFace(), 0);
+        assertEq(vault.outstandingCost(), 0);
         assertEq(vault.idleAssets(), LP_DEPOSIT - price + AMOUNT);
         assertEq(vault.totalAssets(), LP_DEPOSIT + (AMOUNT - price));
         assertEq(usdg.balanceOf(address(vault)), vault.idleAssets());
+        (bytes32 recordHash,) = vault.purchases(key);
+        assertEq(recordHash, bytes32(0));
+    }
+
+    function test_collect_worksWithSiblingRootAfterOriginalNodeRejected() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[1]);
+        rollup.setFirstUnresolvedNode(NODE + 1); // original node rejected
+        (bytes32 root2, bytes32[] memory proof2) = _recommitConfirmed(ws[1]);
+        _execute(ws[1]);
+
+        vault.collect(rec, root2, proof2);
+
+        assertEq(vault.idleAssets(), LP_DEPOSIT - price + AMOUNT);
+        assertEq(vault.outstandingCost(), 0);
+    }
+
+    function test_collect_revertsWithWrongProofForSiblingRoot() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
+        (ExitRecord memory rec,) = _vaultBuys(ws[1]);
+        rollup.setFirstUnresolvedNode(NODE + 1);
+        (bytes32 root2, bytes32[] memory proof2) = _recommitConfirmed(ws[1]);
+        _execute(ws[1]);
+        proof2[0] = bytes32(uint256(1));
+        bytes32 key = _id(ws[1]);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotPaidOut.selector, key));
+        vault.collect(rec, root2, proof2);
     }
 
     function test_collect_lpRealizesTheDiscountAsYield() public {
         uint256 shares = _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        uint256 price = vault.quote(rec);
-        _sellTo(ws[0], seller, address(vault), price);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
         _execute(ws[0]);
-        vault.collect(rec);
+        vault.collect(rec, rec.sendRoot, _noProof());
+        vm.warp(block.timestamp + vault.SHARE_LOCK());
 
         vm.prank(lp);
         uint256 out = vault.redeem(shares, lp, lp);
@@ -272,101 +318,269 @@ contract ExitVaultTest is ExitFixture {
         assertGt(out, LP_DEPOSIT);
     }
 
-    function test_collect_revertsWhileExitStillLive() public {
+    function test_collect_revertsWhileExitUnspent() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        _sellTo(ws[0], seller, address(vault), 0);
+        (ExitRecord memory rec,) = _vaultBuys(ws[0]);
         bytes32 key = _id(ws[0]);
 
-        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitStillLive.selector, key));
-        vault.collect(rec);
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotPaidOut.selector, key));
+        vault.collect(rec, rec.sendRoot, _noProof());
+    }
+
+    function test_collect_revertsWhenSpentButRootNotConfirmed() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
+        (ExitRecord memory rec,) = _vaultBuys(ws[0]);
+        _execute(ws[0]); // spent, but the proven root is still unconfirmed
+        bytes32 key = _id(ws[0]);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotPaidOut.selector, key));
+        vault.collect(rec, rec.sendRoot, _noProof());
     }
 
     function test_collect_revertsForUnknownExit() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
         _sellTo(ws[0], seller, address(vault), 0);
-        _execute(ws[1]); // spent, but never bought by the vault
+        _confirm(ws[1]);
+        _execute(ws[1]); // paid out, but never bought by the vault
         bytes32 key = _id(ws[1]);
         ExitRecord memory rec = _record(ws[1]);
 
         vm.expectRevert(abi.encodeWithSelector(IExitVault.UnknownExit.selector, key));
-        vault.collect(rec);
+        vault.collect(rec, rec.sendRoot, _noProof());
     }
 
     function test_collect_cannotBeRepeated() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        _sellTo(ws[0], seller, address(vault), 0);
+        (ExitRecord memory rec,) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
         _execute(ws[0]);
-        vault.collect(rec);
+        vault.collect(rec, rec.sendRoot, _noProof());
+        bytes32 key = _id(ws[0]);
 
-        vm.expectRevert();
-        vault.collect(rec);
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.UnknownExit.selector, key));
+        vault.collect(rec, rec.sendRoot, _noProof());
     }
 
     function test_collect_rejectsRecordWithInflatedAmount() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        _sellTo(ws[0], seller, address(vault), 0);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
         _execute(ws[0]);
         rec.amount = AMOUNT * 10;
 
         vm.expectRevert();
-        vault.collect(rec);
-        assertEq(vault.outstandingFace(), AMOUNT);
+        vault.collect(rec, rec.sendRoot, _noProof());
+        assertEq(vault.outstandingCost(), price);
     }
 
-    function test_writeOff_realizesLossWhenNodeRejected() public {
-        _deposit(LP_DEPOSIT);
-        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        uint256 price = vault.quote(rec);
-        _sellTo(ws[0], seller, address(vault), price);
-        rollup.setFirstUnresolvedNode(NODE + 1);
+    /// @dev Fake exit 10 (node 101, dest `stranger`) bought by the vault, plus a canonical confirmed leaf for the
+    ///      SAME exitNum holding different content (dest `seller`, node 102). Returns both.
+    function _fakeBoughtWithCanonical() private returns (ExitRecord memory rec, uint256 price, ExitClaim memory canon) {
+        ExitFixture.Withdrawal[] memory fake = _createOn(gateway, 101, 10, 1, stranger, AMOUNT);
+        (rec, price) = _vaultBuys(fake[0]);
+        ExitFixture.Withdrawal[] memory real = _createOn(gateway, 102, 10, 1, seller, AMOUNT);
+        _confirm(real[0]);
+        canon = real[0].claim;
+    }
 
+    function test_writeOff_realizesLossAtCostWhenExitDisproven() public {
+        _deposit(LP_DEPOSIT);
+        (ExitRecord memory rec, uint256 price, ExitClaim memory canon) = _fakeBoughtWithCanonical();
+        bytes32 key = market.listingId(rec.gateway, rec.exitNum, rec.initialDestination);
+
+        vm.expectEmit(true, false, false, true, address(vault));
+        emit IExitVault.ExitWrittenOff(key, price);
         vm.prank(stranger);
-        vault.writeOff(rec);
+        vault.writeOff(rec, canon);
 
-        assertEq(vault.outstandingFace(), 0);
+        assertEq(vault.outstandingCost(), 0);
         assertEq(vault.idleAssets(), LP_DEPOSIT - price);
-        assertEq(vault.totalAssets(), LP_DEPOSIT - price);
+        assertEq(vault.totalAssets(), LP_DEPOSIT - price, "totalAssets drops by cost");
     }
 
-    function test_writeOff_revertsWhileExitIsStillLive() public {
+    function test_writeOff_revertsWhenOnlyTheNodeWasRejected() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        _sellTo(ws[0], seller, address(vault), 0);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[0]);
+        rollup.setFirstUnresolvedNode(NODE + 1);
+        bytes32 key = _id(ws[0]);
 
-        vm.expectRevert();
-        vault.writeOff(rec);
-        assertEq(vault.outstandingFace(), AMOUNT);
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, ws[0].claim); // canonical == own item, root unconfirmed
+        assertEq(vault.outstandingCost(), price);
     }
 
-    function test_writeOff_revertsForSpentExit() public {
+    function test_writeOff_revertsWhenCanonicalIsTheExitsOwnItemUnderConfirmedRoot() public {
         _deposit(LP_DEPOSIT);
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        ExitRecord memory rec = _record(ws[0]);
-        _sellTo(ws[0], seller, address(vault), 0);
-        _execute(ws[0]);
-        rollup.setFirstUnresolvedNode(NODE + 1); // even if the node also resolved, the money arrived
+        (ExitRecord memory rec,) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
+        bytes32 key = _id(ws[0]);
 
-        vm.expectRevert();
-        vault.writeOff(rec);
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, ws[0].claim);
+    }
+
+    function test_writeOff_cannotStrandLegitimatePayoutUnderSiblingRoot() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
+        (ExitRecord memory rec, uint256 price) = _vaultBuys(ws[1]);
+        rollup.setFirstUnresolvedNode(NODE + 1); // original node rejected
+        (bytes32 root2, bytes32[] memory proof2) = _recommitConfirmed(ws[1]);
+        _execute(ws[1]);
+        ExitClaim memory sibling = ws[1].claim;
+        sibling.sendRoot = root2;
+        sibling.proof = proof2;
+        bytes32 key = _id(ws[1]);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, sibling);
+
+        vault.collect(rec, root2, proof2);
+        assertEq(vault.idleAssets(), LP_DEPOSIT - price + AMOUNT);
+        assertEq(vault.idleAssets(), usdg.balanceOf(address(vault)));
+    }
+
+    function test_writeOff_revertsWithUnconfirmedCanonicalRoot() public {
+        _deposit(LP_DEPOSIT);
+        (ExitRecord memory rec,, ExitClaim memory canon) = _fakeBoughtWithCanonical();
+        canon.sendRoot = bytes32(uint256(0xabc));
+        bytes32 key = market.listingId(rec.gateway, rec.exitNum, rec.initialDestination);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, canon);
+    }
+
+    function test_writeOff_revertsWithWrongCanonicalProof() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory fake = _createOn(gateway, 101, 10, 2, stranger, AMOUNT);
+        (ExitRecord memory rec,) = _vaultBuys(fake[1]);
+        ExitFixture.Withdrawal[] memory real = _createOn(gateway, 102, 11, 2, seller, AMOUNT);
+        _confirm(real[0]);
+        ExitClaim memory canon = real[1].claim; // exitNum 12; genuinely confirmed
+        ExitClaim memory forged = real[0].claim; // exitNum 11 leaf (matches fake exitNum 11)
+        forged.proof[0] = bytes32(uint256(1));
+        bytes32 key = market.listingId(rec.gateway, rec.exitNum, rec.initialDestination);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, forged);
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, canon); // valid leaf, but for a different exitNum
+    }
+
+    function test_writeOff_revertsWithClaimForADifferentExit() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(2, seller, AMOUNT);
+        (ExitRecord memory rec,) = _vaultBuys(ws[1]);
+        _confirm(ws[0]);
+        bytes32 key = _id(ws[1]);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.ExitNotDisproven.selector, key));
+        vault.writeOff(rec, ws[0].claim);
     }
 
     function test_writeOff_revertsForUnknownExit() public {
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
-        rollup.setFirstUnresolvedNode(NODE + 1);
         bytes32 key = _id(ws[0]);
         ExitRecord memory rec = _record(ws[0]);
 
         vm.expectRevert(abi.encodeWithSelector(IExitVault.UnknownExit.selector, key));
-        vault.writeOff(rec);
+        vault.writeOff(rec, ws[0].claim);
+    }
+
+    // ============================================================ share lock (anti-JIT)
+
+    function test_shareLock_depositorJustBeforeCollectCannotWithdrawForADay() public {
+        _deposit(LP_DEPOSIT);
+        ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
+        (ExitRecord memory rec,) = _vaultBuys(ws[0]);
+        _confirm(ws[0]);
+        _execute(ws[0]);
+
+        address jit = makeAddr("jit");
+        _fund(jit, address(vault), 50_000e6);
+        vm.prank(jit);
+        uint256 jitShares = vault.deposit(50_000e6, jit);
+        vault.collect(rec, rec.sendRoot, _noProof());
+
+        assertEq(vault.shareUnlockTime(jit), block.timestamp + vault.SHARE_LOCK());
+        assertEq(vault.maxWithdraw(jit), 0);
+        assertEq(vault.maxRedeem(jit), 0);
+        vm.expectPartialRevert(ERC4626.ERC4626ExceededMaxWithdraw.selector);
+        vm.prank(jit);
+        vault.withdraw(1e6, jit, jit);
+        vm.expectPartialRevert(ERC4626.ERC4626ExceededMaxRedeem.selector);
+        vm.prank(jit);
+        vault.redeem(jitShares, jit, jit);
+
+        vm.warp(block.timestamp + vault.SHARE_LOCK());
+        assertGt(vault.maxWithdraw(jit), 0);
+        vm.prank(jit);
+        vault.redeem(jitShares, jit, jit);
+        assertGt(usdg.balanceOf(jit), 0);
+    }
+
+    function test_deposit_revertsWhenReceiverIsNotCaller() public {
+        _fund(stranger, address(vault), 1_000e6);
+
+        vm.expectRevert(IExitVault.ReceiverMustBeCaller.selector);
+        vm.prank(stranger);
+        vault.deposit(1e6, lp); // lock-griefing attempt
+
+        vm.expectRevert(IExitVault.ReceiverMustBeCaller.selector);
+        vm.prank(stranger);
+        vault.mint(1e12, lp);
+
+        assertEq(vault.shareUnlockTime(lp), 0);
+    }
+
+    function test_shareLock_lockedSharesCannotBeTransferred() public {
+        uint256 shares = _deposit(LP_DEPOSIT);
+        address fresh = makeAddr("fresh");
+        uint256 unlock = vault.shareUnlockTime(lp);
+
+        vm.expectRevert(abi.encodeWithSelector(IExitVault.SharesLocked.selector, unlock));
+        vm.prank(lp);
+        vault.transfer(fresh, shares);
+    }
+
+    function test_shareLock_transferAfterUnlockWorksAndRecipientCanWithdrawImmediately() public {
+        uint256 shares = _deposit(LP_DEPOSIT);
+        vm.warp(block.timestamp + vault.SHARE_LOCK());
+        address fresh = makeAddr("fresh");
+
+        vm.prank(lp);
+        vault.transfer(fresh, shares);
+
+        assertEq(vault.shareUnlockTime(fresh), 0, "no propagation");
+        assertEq(vault.maxRedeem(fresh), shares);
+        vm.prank(fresh);
+        uint256 out = vault.redeem(shares, fresh, fresh);
+        assertApproxEqAbs(out, LP_DEPOSIT, 5);
+    }
+
+    function test_shareLock_laterDepositExtendsLock() public {
+        _deposit(LP_DEPOSIT);
+        vm.warp(block.timestamp + 12 hours);
+        _deposit(1_000e6);
+
+        assertEq(vault.shareUnlockTime(lp), block.timestamp + vault.SHARE_LOCK());
+        assertEq(vault.maxWithdraw(lp), 0);
+    }
+
+    function test_defaults_matchDocumentedConstants() public view {
+        assertEq(vault.DEFAULT_BASE_FEE_BPS(), 10);
+        assertEq(vault.DEFAULT_APR_BPS(), 1000);
+        assertEq(vault.baseFeeBps(), 10);
+        assertEq(vault.aprBps(), 1000);
+        assertEq(vault.maxExitAmount(), type(uint256).max);
+        assertTrue(vault.acceptPending());
+        assertEq(vault.SHARE_LOCK(), 1 days);
     }
 
     // ============================================================ share accounting attacks

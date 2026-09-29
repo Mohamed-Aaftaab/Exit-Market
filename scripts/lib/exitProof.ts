@@ -51,20 +51,21 @@ export interface Withdrawal {
   proof: ExitProof;
 }
 
-interface PendingNode {
+export interface AssertedNode {
   nodeNum: bigint;
   blockHash: Hex;
   sendRoot: Hex;
+  /** Number of child->parent messages committed by this node's send root. */
+  sendCount: bigint;
 }
 
-/** Finds the newest node (pending or confirmed) whose send tree already contains `position`. */
-async function findCoveringNode(
+/** Newest rollup node and how many withdrawals its send root commits to. */
+export async function findLatestNode(
   parent: PublicClient,
   child: PublicClient,
   rollup: Address,
-  position: bigint,
-  lookbackBlocks: bigint,
-): Promise<PendingNode & { sendCount: bigint }> {
+  lookbackBlocks = 50_000n,
+): Promise<AssertedNode> {
   const head = await parent.getBlockNumber();
   const logs = await parent.getLogs({
     address: rollup,
@@ -83,11 +84,7 @@ async function findCoveringNode(
   if (!block) throw new Error(`Child block ${blockHash} not found`);
   if (block.sendRoot !== sendRoot) throw new Error("Child block sendRoot does not match node");
 
-  const sendCount = BigInt(block.sendCount);
-  if (position >= sendCount) {
-    throw new Error(`Withdrawal #${position} not yet asserted (node covers ${sendCount} sends). Retry after next node.`);
-  }
-  return { nodeNum: newest.args.nodeNum!, blockHash, sendRoot, sendCount };
+  return { nodeNum: newest.args.nodeNum!, blockHash, sendRoot, sendCount: BigInt(block.sendCount) };
 }
 
 /**
@@ -127,7 +124,10 @@ export async function buildExitProof(params: {
   const [exitNum, extraData] = decodeAbiParameters([{ type: "uint256" }, { type: "bytes" }], gatewayMsg);
   if (exitNum !== w._exitNum) throw new Error("exitNum mismatch between events");
 
-  const node = await findCoveringNode(parent, child, rollup, m.position, params.lookbackBlocks ?? 50_000n);
+  const node = await findLatestNode(parent, child, rollup, params.lookbackBlocks);
+  if (m.position >= node.sendCount) {
+    throw new Error(`Withdrawal #${m.position} not yet asserted (node covers ${node.sendCount} sends). Retry after next node.`);
+  }
   const [, root, merkleProof] = await child.readContract({
     address: NODE_INTERFACE,
     abi: NODE_INTERFACE_ABI,

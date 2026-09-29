@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
+/* Settlement-terminal palette: neutral ink surfaces, Arbitrum blue for action,
+   green = verified, amber = pending/challenge window, red = failed. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #dde1e7;
+  --text: #0e1116;
+  --muted: #5b6573;
+  --accent: #1b6fe0;
+  --accent-ink: #ffffff;
+  --ok: #10855b;
+  --ok-soft: #e3f4ec;
+  --warn: #a8650a;
+  --warn-soft: #fbf0dc;
+  --bad: #c2362f;
+  --bad-soft: #fbe6e4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0b0e13;
+    --surface: #12161d;
+    --surface-2: #181d26;
+    --border: #262d39;
+    --text: #e8ebf0;
+    --muted: #8b95a5;
+    --accent: #4c93f5;
+    --accent-ink: #06101f;
+    --ok: #3fbf88;
+    --ok-soft: #10261d;
+    --warn: #e0a345;
+    --warn-soft: #2a2011;
+    --bad: #ef6b63;
+    --bad-soft: #2c1413;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

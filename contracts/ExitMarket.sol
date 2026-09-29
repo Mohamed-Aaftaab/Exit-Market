@@ -14,7 +14,9 @@ import {
     IOutbox,
     ITradeableExitReceiver
 } from "./interfaces/IArbitrumBridge.sol";
-import {ExitClaim, ExitRecord, IExitBuyer, IExitMarket, IRootVerifier} from "./interfaces/IExitMarket.sol";
+import {ExitClaim, ExitRecord, IExitBuyer, IExitMarket} from "./interfaces/IExitMarket.sol";
+import {IRootVerifier} from "./interfaces/IRootVerifier.sol";
+import {ExitKeys} from "./libraries/ExitKeys.sol";
 import {ExitLeaf} from "./libraries/ExitLeaf.sol";
 
 /// @title ExitMarket
@@ -22,8 +24,11 @@ import {ExitLeaf} from "./libraries/ExitLeaf.sol";
 ///         A seller redirects their exit to this contract with `gateway.transferExitAndCall`; the gateway
 ///         calls `onExitTransfer`, where the exit is proven on-chain (Outbox merkle proof against a
 ///         confirmed root or an unresolved rollup node) and then listed or sold instantly to an IExitBuyer.
-/// @dev Trust model: the owner can only allowlist gateways and set a capped fee. Verification sources
-///      (child gateway, outbox, rollup, verifier) are derived from the gateway and frozen on first allow.
+/// @dev Trust model: the owner chooses which gateways and which root verifier to trust, and sets a fee
+///      capped at MAX_FEE_BPS (snapshotted per listing). Child gateway, outbox and rollup are derived from
+///      the gateway itself and, with the verifier, frozen on first allow. The owner cannot move funds.
+///      Payout safety: an Outbox spent bit is keyed by index only, so tokens are released only when the
+///      index provably holds this exit's item under a CONFIRMED root (confirmed roots are canonical).
 contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -40,6 +45,7 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     mapping(bytes32 id => Listing) private _listings;
 
     constructor(address paymentToken_, address owner_, uint16 feeBps_, address feeRecipient_) Ownable(owner_) {
+        if (paymentToken_ == address(0)) revert ZeroAddress();
         _paymentToken = IERC20(paymentToken_);
         _setFee(feeBps_, feeRecipient_);
     }
@@ -48,6 +54,7 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
 
     /// @inheritdoc IExitMarket
     function allowGateway(address gateway, IRootVerifier verifier) external onlyOwner {
+        if (address(verifier) == address(0)) revert ZeroAddress();
         IL1ArbitrumExtendedGateway gw = IL1ArbitrumExtendedGateway(gateway);
         address bridge = IInbox(gw.inbox()).bridge();
         address rollup = IBridge(bridge).rollup();
@@ -91,14 +98,18 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     function withdrawFees() external nonReentrant {
         uint256 amount = accruedFees;
         accruedFees = 0;
-        _paymentToken.safeTransfer(feeRecipient, amount);
+        address recipient = feeRecipient;
+        _paymentToken.safeTransfer(recipient, amount);
+        emit FeesWithdrawn(recipient, amount);
     }
 
     // ---------------------------------------------------------------- gateway hook
 
-    /// @notice Called by an allowlisted gateway after it redirected an exit to this contract.
-    /// @param sender previous owner of the exit (the seller)
-    /// @param data abi.encode(Action, ExitClaim, params)
+    /// @notice Called by an allowlisted gateway right after it redirected an exit to this contract.
+    /// @param sender previous owner of the exit (the seller), as authenticated by the gateway
+    /// @param exitNum exit number, taken from the gateway call (never from `data`)
+    /// @param data abi.encode(uint8(Action), ExitClaim, params); see IExitMarket.Action
+    /// @return true on success (the gateway requires it)
     function onExitTransfer(address sender, uint256 exitNum, bytes calldata data)
         external
         nonReentrant
@@ -109,9 +120,11 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
 
         (Action action, ExitClaim memory claim, bytes memory params) = abi.decode(data, (Action, ExitClaim, bytes));
         ExitRecord memory exit = _verifyExit(msg.sender, cfg, exitNum, claim);
+        bytes32 id = ExitKeys.id(msg.sender, exitNum, claim.initialDestination);
+        emit ExitVerified(id, exit);
 
-        if (action == Action.LIST) _list(exit, sender, params);
-        else _sellToBuyer(exit, sender, params);
+        if (action == Action.LIST) _list(id, exit, sender, params);
+        else _sellToBuyer(id, exit, sender, params);
         return true;
     }
 
@@ -122,20 +135,23 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         Listing storage l = _listings[id];
         if (l.status != Status.Listed) revert NotListed(id);
         if (block.timestamp > l.expiry) revert ListingExpired(id);
-        if (l.price > maxPrice) revert PriceAboveMax(l.price, maxPrice);
+        uint256 price = l.price;
+        if (price > maxPrice) revert PriceAboveMax(price, maxPrice);
 
         ExitRecord memory exit = l.exit;
-        _requireLive(exit);
+        GatewayConfig memory cfg = _gateways[exit.gateway];
+        if (!cfg.allowed) revert GatewayNotAllowed(exit.gateway);
+        _requireLive(cfg, exit);
 
         l.status = Status.Sold;
-        uint256 fee = (l.price * l.feeBps) / BPS;
+        uint256 fee = (price * l.feeBps) / BPS;
         accruedFees += fee;
 
         _paymentToken.safeTransferFrom(msg.sender, address(this), fee);
-        _paymentToken.safeTransferFrom(msg.sender, l.seller, l.price - fee);
-        _transferExit(exit, msg.sender);
+        _paymentToken.safeTransferFrom(msg.sender, l.seller, price - fee);
+        _transferExit(exit.gateway, exit.exitNum, exit.initialDestination, msg.sender);
 
-        emit ExitBought(id, msg.sender, l.price, fee);
+        emit ExitBought(id, msg.sender, price, fee);
         emit ExitOwnerChanged(id, msg.sender);
     }
 
@@ -143,31 +159,40 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     function cancel(bytes32 id) external nonReentrant {
         Listing storage l = _listings[id];
         if (l.status != Status.Listed) revert NotListed(id);
-        if (msg.sender != l.seller && block.timestamp <= l.expiry) revert NotSeller();
+        address seller = l.seller;
+        if (msg.sender != seller && block.timestamp <= l.expiry) revert NotSeller();
 
-        // Executed while listed: the tokens are already here, so forward them instead.
-        if (_isSpent(l.exit)) return _settle(id, l);
+        ExitRecord memory exit = l.exit;
+        address outbox = _knownGateway(exit.gateway).outbox;
+        if (IOutbox(outbox).isSpent(exit.index)) {
+            // Spent while listed: forward the tokens, but only if the slot provably holds THIS exit.
+            if (!_paidOut(outbox, exit, exit.sendRoot, new bytes32[](0))) revert ExitNeedsSettlement(exit.index);
+            return _settle(id, l);
+        }
 
         l.status = Status.Cancelled;
-        _transferExit(l.exit, l.seller);
+        _transferExit(exit.gateway, exit.exitNum, exit.initialDestination, seller);
 
         emit ListingCancelled(id);
-        emit ExitOwnerChanged(id, l.seller);
+        emit ExitOwnerChanged(id, seller);
     }
 
     /// @inheritdoc IExitMarket
-    function settle(bytes32 id) external nonReentrant {
+    function settle(bytes32 id, bytes32 confirmedRoot, bytes32[] calldata proof) external nonReentrant {
         Listing storage l = _listings[id];
         if (l.status != Status.Listed) revert NotListed(id);
-        if (!_isSpent(l.exit)) revert ExitNotSpent(l.exit.index);
+        ExitRecord memory exit = l.exit;
+        if (!_paidOut(_knownGateway(exit.gateway).outbox, exit, confirmedRoot, proof)) {
+            revert ExitNotPaidOut(exit.index);
+        }
         _settle(id, l);
     }
 
     // ---------------------------------------------------------------- views
 
     /// @inheritdoc IExitMarket
-    function listingId(address gateway, uint256 exitNum, address initialDestination) public pure returns (bytes32) {
-        return keccak256(abi.encode(gateway, exitNum, initialDestination));
+    function listingId(address gateway, uint256 exitNum, address initialDestination) external pure returns (bytes32) {
+        return ExitKeys.id(gateway, exitNum, initialDestination);
     }
 
     /// @inheritdoc IExitMarket
@@ -177,15 +202,29 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
 
     /// @inheritdoc IExitMarket
     function isExitLive(ExitRecord calldata exit) external view returns (bool) {
-        GatewayConfig memory cfg = _knownGateway(exit.gateway);
+        GatewayConfig storage cfg = _knownGateway(exit.gateway);
         if (IOutbox(cfg.outbox).isSpent(exit.index)) return false;
         (bool valid,,) = cfg.verifier.verifyRoot(cfg.rollup, cfg.outbox, exit.sendRoot, exit.nodeNum, exit.blockHash);
         return valid;
     }
 
     /// @inheritdoc IExitMarket
-    function isExitSpent(ExitRecord calldata exit) external view returns (bool) {
-        return _isSpent(exit);
+    function isExitPaidOut(ExitRecord calldata exit, bytes32 confirmedRoot, bytes32[] calldata proof)
+        external
+        view
+        returns (bool)
+    {
+        return _paidOut(_knownGateway(exit.gateway).outbox, exit, confirmedRoot, proof);
+    }
+
+    /// @inheritdoc IExitMarket
+    function isExitDisproven(ExitRecord calldata exit, ExitClaim calldata canonical) external view returns (bool) {
+        GatewayConfig storage cfg = _knownGateway(exit.gateway);
+        if (IOutbox(cfg.outbox).roots(canonical.sendRoot) == bytes32(0)) return false;
+
+        bytes32 item = _itemOf(cfg.childGateway, exit.gateway, exit.exitNum, canonical);
+        if (item == exit.itemHash) return false; // the canonical exit IS this exit
+        return ExitLeaf.rootFromItem(item, canonical.proof, canonical.index) == canonical.sendRoot;
     }
 
     /// @inheritdoc IExitMarket
@@ -209,28 +248,14 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         if (owner_ != address(this)) revert ExitNotHeld();
 
         // exitNum and gateway come from the gateway call, never from the seller's claim.
-        bytes32 root = ExitLeaf.computeRoot(
-            ExitLeaf.Leaf({
-                childGateway: cfg.childGateway,
-                parentGateway: gateway,
-                l1Token: c.l1Token,
-                from: c.from,
-                initialDestination: c.initialDestination,
-                amount: c.amount,
-                exitNum: exitNum,
-                l2Block: c.l2Block,
-                l1Block: c.l1Block,
-                l2Timestamp: c.l2Timestamp
-            }),
-            c.proof,
-            c.index
-        );
+        bytes32 item = _itemOf(cfg.childGateway, gateway, exitNum, c);
+        bytes32 root = ExitLeaf.rootFromItem(item, c.proof, c.index);
         if (root != c.sendRoot) revert ProofMismatch(root, c.sendRoot);
 
         (bool valid, bool pending, uint64 deadlineBlock) =
             cfg.verifier.verifyRoot(cfg.rollup, cfg.outbox, c.sendRoot, c.nodeNum, c.blockHash);
         if (!valid) revert InvalidRoot(c.sendRoot, c.nodeNum);
-        // Unspent now + redirected to us => any later execution pays an address this market controls.
+        // Unspent now + redirected to us => a later execution OF THIS ITEM pays an address we control.
         if (IOutbox(cfg.outbox).isSpent(c.index)) revert ExitAlreadySpent(c.index);
 
         return ExitRecord({
@@ -240,6 +265,7 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
             l1Token: c.l1Token,
             amount: c.amount,
             index: c.index,
+            itemHash: item,
             sendRoot: c.sendRoot,
             nodeNum: c.nodeNum,
             blockHash: c.blockHash,
@@ -248,12 +274,32 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         });
     }
 
-    function _list(ExitRecord memory exit, address seller, bytes memory params) private {
+    function _itemOf(address childGateway, address gateway, uint256 exitNum, ExitClaim memory c)
+        private
+        pure
+        returns (bytes32)
+    {
+        return ExitLeaf.itemHash(
+            ExitLeaf.Leaf({
+                childGateway: childGateway,
+                parentGateway: gateway,
+                l1Token: c.l1Token,
+                from: c.from,
+                initialDestination: c.initialDestination,
+                amount: c.amount,
+                exitNum: exitNum,
+                l2Block: c.l2Block,
+                l1Block: c.l1Block,
+                l2Timestamp: c.l2Timestamp
+            })
+        );
+    }
+
+    function _list(bytes32 id, ExitRecord memory exit, address seller, bytes memory params) private {
         (uint256 price, uint64 expiry) = abi.decode(params, (uint256, uint64));
         if (price == 0) revert ZeroPrice();
         if (expiry <= block.timestamp) revert BadExpiry();
-
-        bytes32 id = listingId(exit.gateway, exit.exitNum, exit.initialDestination);
+        // Defensive: while Listed the market owns the exit, so the gateway cannot re-enter here for it.
         if (_listings[id].status == Status.Listed) revert ListingExists(id);
 
         _listings[id] = Listing({
@@ -269,9 +315,8 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         emit ExitOwnerChanged(id, address(this));
     }
 
-    function _sellToBuyer(ExitRecord memory exit, address seller, bytes memory params) private {
+    function _sellToBuyer(bytes32 id, ExitRecord memory exit, address seller, bytes memory params) private {
         (address buyer, uint256 minPayout) = abi.decode(params, (address, uint256));
-        bytes32 id = listingId(exit.gateway, exit.exitNum, exit.initialDestination);
 
         // Measure what the buyer actually delivered rather than trusting its return value.
         uint256 balanceBefore = _paymentToken.balanceOf(address(this));
@@ -283,7 +328,7 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         uint256 fee = (price * feeBps) / BPS;
         accruedFees += fee;
 
-        _transferExit(exit, buyer);
+        _transferExit(exit.gateway, exit.exitNum, exit.initialDestination, buyer);
         _paymentToken.safeTransfer(seller, price - fee);
 
         emit ExitSoldToBuyer(id, seller, buyer, price, fee);
@@ -292,12 +337,26 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
 
     function _settle(bytes32 id, Listing storage l) private {
         l.status = Status.Settled;
-        IERC20(l.exit.l1Token).safeTransfer(l.seller, l.exit.amount);
-        emit ListingSettled(id, l.exit.amount);
+        uint256 amount = l.exit.amount;
+        IERC20(l.exit.l1Token).safeTransfer(l.seller, amount);
+        emit ListingSettled(id, amount);
     }
 
-    function _requireLive(ExitRecord memory exit) private view {
-        GatewayConfig memory cfg = _knownGateway(exit.gateway);
+    /// @dev Spent bit alone is not enough (it is keyed by index): a fake exit proven against a node that is
+    ///      later rejected can share an index with a real message. A confirmed root is canonical, so if the
+    ///      index holds our item under a confirmed root, the executed message at that index was ours.
+    function _paidOut(address outbox, ExitRecord memory exit, bytes32 confirmedRoot, bytes32[] memory proof)
+        private
+        view
+        returns (bool)
+    {
+        if (!IOutbox(outbox).isSpent(exit.index)) return false;
+        if (IOutbox(outbox).roots(confirmedRoot) == bytes32(0)) return false;
+        if (confirmedRoot == exit.sendRoot) return true; // proven at verification time
+        return ExitLeaf.rootFromItem(exit.itemHash, proof, exit.index) == confirmedRoot;
+    }
+
+    function _requireLive(GatewayConfig memory cfg, ExitRecord memory exit) private view {
         (address owner_,) =
             IL1ArbitrumExtendedGateway(exit.gateway).getExternalCall(exit.exitNum, exit.initialDestination, "");
         if (owner_ != address(this)) revert ExitNotHeld();
@@ -306,22 +365,19 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         if (!valid) revert InvalidRoot(exit.sendRoot, exit.nodeNum);
     }
 
-    function _isSpent(ExitRecord memory exit) private view returns (bool) {
-        return IOutbox(_knownGateway(exit.gateway).outbox).isSpent(exit.index);
-    }
-
-    function _knownGateway(address gateway) private view returns (GatewayConfig memory cfg) {
+    function _knownGateway(address gateway) private view returns (GatewayConfig storage cfg) {
         cfg = _gateways[gateway];
         if (!cfg.known) revert GatewayUnknown(gateway);
     }
 
-    function _transferExit(ExitRecord memory exit, address to) private {
+    function _transferExit(address gateway, uint256 exitNum, address initialDestination, address to) private {
         // Empty data: no hook on the receiver, so no re-entry into this contract.
-        IL1ArbitrumExtendedGateway(exit.gateway).transferExitAndCall(exit.exitNum, exit.initialDestination, to, "", "");
+        IL1ArbitrumExtendedGateway(gateway).transferExitAndCall(exitNum, initialDestination, to, "", "");
     }
 
     function _setFee(uint16 feeBps_, address feeRecipient_) private {
         if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh(feeBps_);
+        if (feeRecipient_ == address(0)) revert ZeroAddress();
         feeBps = feeBps_;
         feeRecipient = feeRecipient_;
         emit FeeUpdated(feeBps_, feeRecipient_);

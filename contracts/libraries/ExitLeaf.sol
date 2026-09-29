@@ -47,12 +47,17 @@ library ExitLeaf {
     /// @dev Reverts on non-minimal paths: MerkleLib ignores index bits above proof.length, but
     ///      Outbox.isSpent reads the full index, so a padded index would check the wrong slot.
     function computeRoot(Leaf memory leaf, bytes32[] memory proof, uint256 index) internal pure returns (bytes32) {
+        return rootFromItem(itemHash(leaf), proof, index);
+    }
+
+    /// @notice Send-tree root implied by an already-hashed Outbox item (used to re-prove a stored exit).
+    function rootFromItem(bytes32 item, bytes32[] memory proof, uint256 index) internal pure returns (bytes32) {
         uint256 len = proof.length;
         if (len > MAX_PROOF_LENGTH) revert ProofTooLong(len);
         if (index >> len != 0) revert PathNotMinimal(index, len);
 
         // Outbox hashes the item once more to mark it as a leaf.
-        bytes32 h = keccak256(abi.encodePacked(itemHash(leaf)));
+        bytes32 h = keccak256(abi.encodePacked(item));
         for (uint256 i = 0; i < len; ++i) {
             h = (index >> i) & 1 == 0
                 ? keccak256(abi.encodePacked(h, proof[i]))

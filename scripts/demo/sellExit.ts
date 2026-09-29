@@ -39,7 +39,7 @@ const rollupAbi = [
   },
 ] as const;
 const vaultAbi = parseAbi([
-  "struct ExitRecord { address gateway; uint256 exitNum; address initialDestination; address l1Token; uint256 amount; uint256 index; bytes32 sendRoot; uint64 nodeNum; bytes32 blockHash; bool pending; uint64 deadlineBlock; }",
+  "struct ExitRecord { address gateway; uint256 exitNum; address initialDestination; address l1Token; uint256 amount; uint256 index; bytes32 itemHash; bytes32 sendRoot; uint64 nodeNum; bytes32 blockHash; bool pending; uint64 deadlineBlock; }",
   "function quote(ExitRecord exit) view returns (uint256)",
 ]);
 
@@ -68,7 +68,7 @@ async function main() {
     functionName: "getNode",
     args: [w.proof.nodeNum],
   });
-  const record = toExitRecord(w, gateway, node.deadlineBlock, true);
+  const record = toExitRecord(w, { parent: gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway }, node.deadlineBlock, true);
   // Quote only rises as the deadline approaches, so today's quote is a safe floor.
   const minPayout = await parent.readContract({ address: d.vault, abi: vaultAbi, functionName: "quote", args: [record] });
 

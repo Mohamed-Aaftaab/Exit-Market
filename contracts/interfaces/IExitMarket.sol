@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
-/// @notice Everything a seller supplies to prove a pending withdrawal (built by scripts/lib/exitProof.ts).
+import {IRootVerifier} from "./IRootVerifier.sol";
+
+/// @notice Everything a seller supplies to prove a pending withdrawal (built by scripts/lib/exitProof.ts,
+///         encoded by scripts/lib/hookData.ts).
 /// @dev exitNum and the parent gateway are NOT here: they come from the gateway's hook call.
 struct ExitClaim {
     address initialDestination;
@@ -18,15 +21,16 @@ struct ExitClaim {
     bytes32 blockHash; // ignored when sendRoot is already confirmed in the Outbox
 }
 
-/// @notice A verified exit. Stored by the market; passed to buyers.
+/// @notice A verified exit, as recorded by the market and handed to buyers.
 struct ExitRecord {
     address gateway;
     uint256 exitNum;
     address initialDestination;
     address l1Token;
     uint256 amount;
-    uint256 index;
-    bytes32 sendRoot;
+    uint256 index; // position in the child chain's send tree (Outbox spent-bitmap key)
+    bytes32 itemHash; // Outbox item hash of the withdrawal: lets anyone re-prove it against a confirmed root
+    bytes32 sendRoot; // root the exit was proven against at verification time
     uint64 nodeNum;
     bytes32 blockHash;
     bool pending; // true = proven against an unconfirmed node
@@ -34,24 +38,17 @@ struct ExitRecord {
 }
 
 /// @notice Instant-exit counterparty (e.g. ExitVault). Called by the market inside the seller's
-///         transferExitAndCall; must transfer the returned price in the market's payment token to the market.
+///         transferExitAndCall; must transfer the price in the market's payment token to the market.
 interface IExitBuyer {
-    /// @return price amount of payment token transferred to the market
+    /// @param exit verified exit being sold; ownership is redirected to the buyer right after this call
+    /// @return price amount of payment token transferred to the market (the market measures the real delta)
     function buyExit(ExitRecord calldata exit) external returns (uint256 price);
 }
 
-/// @notice Checks that a send root is authentic for a given rollup (legacy now, BOLD later).
-interface IRootVerifier {
-    /// @return valid root is confirmed, or belongs to a node that is still unresolved
-    /// @return pending true if the root is not yet confirmed
-    /// @return deadlineBlock L1 block after which the node can be confirmed (0 if confirmed)
-    function verifyRoot(address rollup, address outbox, bytes32 sendRoot, uint64 nodeNum, bytes32 blockHash)
-        external
-        view
-        returns (bool valid, bool pending, uint64 deadlineBlock);
-}
-
 interface IExitMarket {
+    /// @notice First field of the hook data: abi.encode(uint8(Action), ExitClaim, params).
+    ///         LIST params = abi.encode(uint256 price, uint64 expiry);
+    ///         SELL_TO_BUYER params = abi.encode(address buyer, uint256 minPayout).
     enum Action {
         LIST,
         SELL_TO_BUYER
@@ -65,6 +62,7 @@ interface IExitMarket {
         Settled
     }
 
+    /// @notice A fixed-price listing. The market is the exit's owner while Listed.
     struct Listing {
         ExitRecord exit;
         address seller;
@@ -74,18 +72,22 @@ interface IExitMarket {
         Status status;
     }
 
+    /// @notice Verification sources derived from a gateway and frozen when it is first allowed.
     struct GatewayConfig {
         address childGateway;
         address outbox;
         address rollup;
         IRootVerifier verifier;
-        bool allowed; // new listings/sales accepted
+        bool allowed; // new listings, sales and buys accepted
         bool known; // ever allowed: cancel/settle keep working after disallow
     }
 
     event GatewayAllowed(address indexed gateway, address childGateway, address outbox, address rollup, address verifier);
     event GatewayDisallowed(address indexed gateway);
     event FeeUpdated(uint16 feeBps, address feeRecipient);
+    event FeesWithdrawn(address indexed recipient, uint256 amount);
+    /// @notice Full verified record, emitted for every exit the market accepts (indexers/keepers need it).
+    event ExitVerified(bytes32 indexed id, ExitRecord exit);
     event ExitListed(
         bytes32 indexed id, address indexed seller, address indexed l1Token, uint256 amount, uint256 price, uint64 expiry, bool pending
     );
@@ -96,6 +98,7 @@ interface IExitMarket {
     /// @notice Emitted because the gateway's own WithdrawRedirected events arrive out of order on instant sales.
     event ExitOwnerChanged(bytes32 indexed id, address indexed newOwner);
 
+    error ZeroAddress();
     error GatewayNotAllowed(address gateway);
     error GatewayUnknown(address gateway);
     /// @notice Re-allowing a gateway must not change its snapshotted verification sources.
@@ -112,71 +115,65 @@ interface IExitMarket {
     error PayoutBelowMin(uint256 payout, uint256 minPayout);
     error ZeroPrice();
     error NotSeller();
-    error ExitNotSpent(uint256 index);
+    /// @notice The exit's Outbox slot is not spent by THIS exit under a confirmed root.
+    error ExitNotPaidOut(uint256 index);
+    /// @notice The slot is spent but not provably by this exit: settle with a proof against a confirmed root.
+    error ExitNeedsSettlement(uint256 index);
     error FeeTooHigh(uint16 feeBps);
     error BadExpiry();
 
+    /// @notice Allowlist a parent-chain gateway. Derives inbox -> bridge -> rollup -> outbox from it and
+    ///         freezes those sources and `verifier` on first allow.
+    /// @dev Owner-trusted: the owner chooses which gateways and which root verifier are trusted.
     function allowGateway(address gateway, IRootVerifier verifier) external;
 
+    /// @notice Stop accepting new listings, sales and buys for `gateway`; cancel/settle keep working.
     function disallowGateway(address gateway) external;
 
+    /// @notice Set the fee (max MAX_FEE_BPS) for future listings/sales and its recipient.
     function setFee(uint16 feeBps, address feeRecipient) external;
 
     /// @notice Buy a listed exit; the exit is redirected to msg.sender.
+    /// @param maxPrice front-running guard: revert if the listing price is higher
     function buy(bytes32 id, uint256 maxPrice) external;
 
-    /// @notice Seller cancels anytime; anyone may cancel after expiry. Exit returns to the seller.
+    /// @notice Seller cancels anytime; anyone may cancel after expiry. The exit returns to the seller.
+    ///         If the exit already paid out to the market, the tokens are forwarded instead (settlement).
     function cancel(bytes32 id) external;
 
-    /// @notice If a listed exit was executed while the market held it, forward the tokens to the seller.
-    function settle(bytes32 id) external;
+    /// @notice Forward the tokens of a listed exit that was executed while the market held it.
+    /// @param confirmedRoot a confirmed Outbox root containing the exit (use exit.sendRoot once confirmed)
+    /// @param proof merkle proof of exit.itemHash at exit.index in `confirmedRoot` (empty if == exit.sendRoot)
+    function settle(bytes32 id, bytes32 confirmedRoot, bytes32[] calldata proof) external;
 
+    /// @notice Send accrued fees to the fee recipient. Callable by anyone.
     function withdrawFees() external;
 
+    /// @return id keccak256(abi.encode(gateway, exitNum, initialDestination)): unique per exit
     function listingId(address gateway, uint256 exitNum, address initialDestination) external pure returns (bytes32);
 
     function getListing(bytes32 id) external view returns (Listing memory);
 
-    /// @notice True if a pending exit's node is still unresolved (or its root is confirmed) and it is unspent.
+    /// @notice True if the exit is unspent and its root is confirmed or its node is still unresolved.
+    /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
     function isExitLive(ExitRecord calldata exit) external view returns (bool);
 
-    /// @notice True once the exit has been executed through the Outbox.
-    function isExitSpent(ExitRecord calldata exit) external view returns (bool);
+    /// @notice True only if the exit's Outbox slot is spent AND the slot provably holds this exit's item
+    ///         under a confirmed root, i.e. the exit's tokens were actually paid to its owner.
+    /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
+    function isExitPaidOut(ExitRecord calldata exit, bytes32 confirmedRoot, bytes32[] calldata proof)
+        external
+        view
+        returns (bool);
+
+    /// @notice Fraud proof that `exit` does not exist: a CONFIRMED root holds a different item with the same
+    ///         gateway and exitNum. Exit numbers are unique per child gateway, so the claimed exit was fake.
+    /// @param canonical the real withdrawal for exit.exitNum (fields, index, proof, confirmed sendRoot);
+    ///        its nodeNum/blockHash are ignored and its initialDestination may differ from exit's
+    /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
+    function isExitDisproven(ExitRecord calldata exit, ExitClaim calldata canonical) external view returns (bool);
 
     function getGatewayConfig(address gateway) external view returns (GatewayConfig memory);
 
     function paymentToken() external view returns (address);
-}
-
-/// @notice ERC-4626 USDG vault that buys USDG exits instantly at a time-based discount.
-interface IExitVault is IExitBuyer {
-    event ExitPurchased(bytes32 indexed key, uint256 amount, uint256 price);
-    event ExitCollected(bytes32 indexed key, uint256 amount);
-    event ExitWrittenOff(bytes32 indexed key, uint256 amount);
-    event ParamsUpdated(uint16 baseFeeBps, uint16 aprBps, uint256 maxExitAmount, bool acceptPending);
-
-    error OnlyMarket();
-    error WrongToken(address l1Token);
-    error PendingNotAccepted();
-    error ExitTooLarge(uint256 amount);
-    error InsufficientLiquidity(uint256 needed, uint256 idle);
-    error UnknownExit(bytes32 key);
-    error ExitStillLive(bytes32 key);
-    error BadParams();
-
-    /// @notice price = amount - amount*baseFeeBps/1e4 - amount*aprBps*secondsToConfirm/(1e4*365 days),
-    ///         secondsToConfirm = max(deadlineBlock - block.number, 0) * 12 (block.number is L1 on Arbitrum).
-    function quote(ExitRecord calldata exit) external view returns (uint256 price);
-
-    /// @notice Permissionless: after the exit executed (tokens arrived), move face value from outstanding to idle.
-    function collect(ExitRecord calldata exit) external;
-
-    /// @notice Permissionless: if the exit's node was rejected (not live, not spent), realize the loss.
-    function writeOff(ExitRecord calldata exit) external;
-
-    function setParams(uint16 baseFeeBps, uint16 aprBps, uint256 maxExitAmount, bool acceptPending) external;
-
-    function idleAssets() external view returns (uint256);
-
-    function outstandingFace() external view returns (uint256);
 }
