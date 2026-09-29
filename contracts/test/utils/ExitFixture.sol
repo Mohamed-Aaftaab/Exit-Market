@@ -95,6 +95,20 @@ abstract contract ExitFixture is Test {
         uint256 n,
         address dest,
         uint256 amount
+    ) internal returns (Withdrawal[] memory) {
+        return _createFrom(gw, nodeNum, firstExitNum, n, dest, dest, amount);
+    }
+
+    /// @dev Like _createOn, but the child-chain sender (`from_`) differs from the initial destination `dest`,
+    ///      e.g. a user withdrawing to a router contract.
+    function _createFrom(
+        MockExtendedGateway gw,
+        uint64 nodeNum,
+        uint256 firstExitNum,
+        uint256 n,
+        address from_,
+        address dest,
+        uint256 amount
     ) internal returns (Withdrawal[] memory ws) {
         bytes32[] memory items = new bytes32[](n);
         ExitClaim[] memory claims = new ExitClaim[](n);
@@ -103,7 +117,7 @@ abstract contract ExitFixture is Test {
                 childGateway: gw.counterpartGateway(),
                 parentGateway: address(gw),
                 l1Token: address(exitToken),
-                from: dest,
+                from: from_,
                 initialDestination: dest,
                 amount: amount,
                 exitNum: firstExitNum + i,
@@ -115,7 +129,7 @@ abstract contract ExitFixture is Test {
             claims[i] = ExitClaim({
                 initialDestination: dest,
                 l1Token: address(exitToken),
-                from: dest,
+                from: from_,
                 amount: amount,
                 l2Block: leaf.l2Block,
                 l1Block: leaf.l1Block,
