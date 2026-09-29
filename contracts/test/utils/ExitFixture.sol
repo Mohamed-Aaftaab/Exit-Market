@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {ExitLeaf} from "../../libraries/ExitLeaf.sol";
-import {ExitClaim, ExitRecord, IExitMarket} from "../../interfaces/IExitMarket.sol";
+import {ExitClaim, ExitRecord, IExitMarket, PayoutProof} from "../../interfaces/IExitMarket.sol";
 import {ExitMarket} from "../../ExitMarket.sol";
 import {LegacyRootVerifier} from "../../verifiers/LegacyRootVerifier.sol";
 import {
@@ -33,6 +33,7 @@ abstract contract ExitFixture is Test {
     }
 
     MockERC20 internal usdg;
+    bool internal wethLeaves; // build leaves with callvalue = amount, like the WETH gateway
     MockERC20 internal exitToken; // l1Token of created withdrawals (defaults to usdg)
     MockOutbox internal outbox;
     MockLegacyRollup internal rollup;
@@ -110,7 +111,7 @@ abstract contract ExitFixture is Test {
                 l1Block: 500 + i,
                 l2Timestamp: 1_700_000_000 + i
             });
-            items[i] = ExitLeaf.itemHash(leaf);
+            items[i] = _leafHash(leaf);
             claims[i] = ExitClaim({
                 initialDestination: dest,
                 l1Token: address(exitToken),
@@ -239,20 +240,7 @@ abstract contract ExitFixture is Test {
             l1Token: w.claim.l1Token,
             amount: w.claim.amount,
             index: w.claim.index,
-            itemHash: ExitLeaf.itemHash(
-                ExitLeaf.Leaf({
-                    childGateway: MockExtendedGateway(w.gateway).counterpartGateway(),
-                    parentGateway: w.gateway,
-                    l1Token: w.claim.l1Token,
-                    from: w.claim.from,
-                    initialDestination: w.claim.initialDestination,
-                    amount: w.claim.amount,
-                    exitNum: w.exitNum,
-                    l2Block: w.claim.l2Block,
-                    l1Block: w.claim.l1Block,
-                    l2Timestamp: w.claim.l2Timestamp
-                })
-            ),
+            itemHash: _leafHash(_leafOf(w)),
             sendRoot: w.claim.sendRoot,
             nodeNum: w.claim.nodeNum,
             blockHash: w.claim.blockHash,
@@ -270,7 +258,14 @@ abstract contract ExitFixture is Test {
     ///      canonical tree after the node the exit was first proven against was rejected).
     ///      The new root is registered as confirmed in the Outbox.
     function _recommitConfirmed(Withdrawal memory w) internal returns (bytes32 root, bytes32[] memory proof) {
-        uint256 idx = w.claim.index;
+        return _recommitConfirmedAt(w, w.claim.index);
+    }
+
+    /// @dev Like _recommitConfirmed but the item sits at `idx` in the canonical tree (may differ from the proven index).
+    function _recommitConfirmedAt(Withdrawal memory w, uint256 idx)
+        internal
+        returns (bytes32 root, bytes32[] memory proof)
+    {
         bytes32[] memory items = new bytes32[](idx + 1);
         for (uint256 i = 0; i < idx; ++i) {
             items[i] = keccak256(abi.encode("filler", i));
@@ -282,8 +277,32 @@ abstract contract ExitFixture is Test {
         outbox.setRoot(root, keccak256("confirmed2"));
     }
 
+    /// @dev Payout proof for the (index, root) the exit was proven against at verification time.
+    function _ownPayout(Withdrawal memory w) internal pure returns (PayoutProof memory) {
+        return PayoutProof(w.claim.index, w.claim.sendRoot, new bytes32[](0));
+    }
+
     function _noProof() internal pure returns (bytes32[] memory) {
         return new bytes32[](0);
+    }
+
+    function _leafHash(ExitLeaf.Leaf memory leaf) internal view returns (bytes32) {
+        return wethLeaves ? ExitLeaf.itemHashWithValue(leaf, leaf.amount) : ExitLeaf.itemHash(leaf);
+    }
+
+    function _leafOf(Withdrawal memory w) internal view returns (ExitLeaf.Leaf memory) {
+        return ExitLeaf.Leaf({
+            childGateway: MockExtendedGateway(w.gateway).counterpartGateway(),
+            parentGateway: w.gateway,
+            l1Token: w.claim.l1Token,
+            from: w.claim.from,
+            initialDestination: w.claim.initialDestination,
+            amount: w.claim.amount,
+            exitNum: w.exitNum,
+            l2Block: w.claim.l2Block,
+            l1Block: w.claim.l1Block,
+            l2Timestamp: w.claim.l2Timestamp
+        });
     }
 
     function _fee(uint256 price) internal pure returns (uint256) {

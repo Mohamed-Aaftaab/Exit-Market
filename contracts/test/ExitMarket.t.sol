@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ExitLeaf} from "../libraries/ExitLeaf.sol";
-import {ExitClaim, ExitRecord, IExitMarket} from "../interfaces/IExitMarket.sol";
+import {ExitClaim, ExitRecord, IExitMarket, PayoutProof} from "../interfaces/IExitMarket.sol";
 import {IRootVerifier} from "../interfaces/IRootVerifier.sol";
 import {ExitMarket} from "../ExitMarket.sol";
 import {LegacyRootVerifier} from "../verifiers/LegacyRootVerifier.sol";
@@ -382,7 +382,7 @@ contract ExitMarketTest is ExitFixture {
 
         _confirm(ws[1]);
         _execute(ws[1]);
-        market.settle(idSettle, ws[1].claim.sendRoot, _noProof());
+        market.settle(idSettle, _ownPayout(ws[1]));
         assertEq(usdg.balanceOf(seller), AMOUNT);
         assertFalse(market.getGatewayConfig(address(gateway)).allowed);
         assertTrue(market.getGatewayConfig(address(gateway)).known);
@@ -447,7 +447,7 @@ contract ExitMarketTest is ExitFixture {
         rec.gateway = stranger;
 
         vm.expectRevert(abi.encodeWithSelector(IExitMarket.GatewayUnknown.selector, stranger));
-        market.isExitPaidOut(rec, rec.sendRoot, _noProof());
+        market.isExitPaidOut(rec, PayoutProof(rec.index, rec.sendRoot, _noProof()));
     }
 
     // ============================================================ 7. id collisions

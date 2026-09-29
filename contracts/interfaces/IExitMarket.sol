@@ -37,6 +37,16 @@ struct ExitRecord {
     uint64 deadlineBlock; // L1 block after which the node can confirm (0 if already confirmed)
 }
 
+/// @notice Proof that an exit was executed: its item sits at `index` under a CONFIRMED Outbox root.
+/// @dev index may differ from ExitRecord.index (an exit proven against a bogus pending node can carry a wrong
+///      index; the canonical one is what the Outbox spent). Empty proof allowed when
+///      (index, confirmedRoot) == (exit.index, exit.sendRoot), which was proven at verification time.
+struct PayoutProof {
+    uint256 index;
+    bytes32 confirmedRoot;
+    bytes32[] proof;
+}
+
 /// @notice Instant-exit counterparty (e.g. ExitVault). Called by the market inside the seller's
 ///         transferExitAndCall; must transfer the price in the market's payment token to the market.
 interface IExitBuyer {
@@ -142,9 +152,7 @@ interface IExitMarket {
     function cancel(bytes32 id) external;
 
     /// @notice Forward the tokens of a listed exit that was executed while the market held it.
-    /// @param confirmedRoot a confirmed Outbox root containing the exit (use exit.sendRoot once confirmed)
-    /// @param proof merkle proof of exit.itemHash at exit.index in `confirmedRoot` (empty if == exit.sendRoot)
-    function settle(bytes32 id, bytes32 confirmedRoot, bytes32[] calldata proof) external;
+    function settle(bytes32 id, PayoutProof calldata payout) external;
 
     /// @notice Send accrued fees to the fee recipient. Callable by anyone.
     function withdrawFees() external;
@@ -158,20 +166,14 @@ interface IExitMarket {
     /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
     function isExitLive(ExitRecord calldata exit) external view returns (bool);
 
-    /// @notice True only if the exit's Outbox slot is spent AND the slot provably holds this exit's item
-    ///         under a confirmed root, i.e. the exit's tokens were actually paid to its owner.
+    /// @notice True only if Outbox slot `payout.index` is spent AND provably holds this exit's item under a
+    ///         confirmed root, i.e. the exit's tokens were actually paid to its owner.
     /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
-    function isExitPaidOut(ExitRecord calldata exit, bytes32 confirmedRoot, bytes32[] calldata proof)
-        external
-        view
-        returns (bool);
+    function isExitPaidOut(ExitRecord calldata exit, PayoutProof calldata payout) external view returns (bool);
 
-    /// @notice Fraud proof that `exit` does not exist: a CONFIRMED root holds a different item with the same
-    ///         gateway and exitNum. Exit numbers are unique per child gateway, so the claimed exit was fake.
-    /// @param canonical the real withdrawal for exit.exitNum (fields, index, proof, confirmed sendRoot);
-    ///        its nodeNum/blockHash are ignored and its initialDestination may differ from exit's
+    /// @notice True if the node the exit was proven against was rejected (see IRootVerifier.isRootRejected).
     /// @dev Reverts GatewayUnknown for a gateway that was never allowed.
-    function isExitDisproven(ExitRecord calldata exit, ExitClaim calldata canonical) external view returns (bool);
+    function isExitRejected(ExitRecord calldata exit) external view returns (bool);
 
     function getGatewayConfig(address gateway) external view returns (GatewayConfig memory);
 

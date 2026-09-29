@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { parseUnits } from "viem";
 import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
-import { ARBITRUM_SEPOLIA, USDG_DECIMALS, XAI_TESTNET, childRouterAbi } from "@/lib/contracts";
+import { ARBITRUM_SEPOLIA, XAI_TESTNET, childRouterAbi } from "@/lib/contracts";
+import { errorText, parseUsdgInput } from "@/lib/format";
 import { xaiTestnet } from "@/lib/wagmi";
 
 /** Starts a standard-bridge USDG withdrawal on Xai Testnet (the thing that normally locks for days). */
@@ -14,11 +14,14 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
   const child = usePublicClient({ chainId: xaiTestnet.id });
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<string>();
+  const [isBusy, setIsBusy] = useState(false);
 
   async function withdraw() {
-    if (!address || !child) return;
-    const value = parseUnits(amount || "0", USDG_DECIMALS);
-    if (value <= 0n) return setStatus("Enter an amount");
+    if (!address || !child || isBusy) return;
+    const value = parseUsdgInput(amount);
+    if (value === undefined) return setStatus("Enter a USDG amount with at most 6 decimals");
+
+    setIsBusy(true);
     try {
       if (chainId !== xaiTestnet.id) await switchChainAsync({ chainId: xaiTestnet.id });
       setStatus("Confirm the withdrawal on Xai Testnet…");
@@ -29,12 +32,14 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
         functionName: "outboundTransfer",
         args: [ARBITRUM_SEPOLIA.usdg, address, value, "0x"],
       });
-      await child.waitForTransactionReceipt({ hash });
+      await child.waitForTransactionReceipt({ hash, timeout: 120_000 });
       setStatus("Withdrawal started. It becomes sellable after the next rollup assertion (~15 min).");
       setAmount("");
       onStarted();
     } catch (err) {
-      setStatus(err instanceof Error ? err.message.split("\n")[0] : "Withdrawal failed");
+      setStatus(errorText(err));
+    } finally {
+      setIsBusy(false);
     }
   }
 
@@ -49,19 +54,25 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
           inputMode="decimal"
           placeholder="USDG to withdraw from Xai"
           value={amount}
+          disabled={isBusy}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
           className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-sm text-ink"
         />
         <button
           type="button"
           onClick={withdraw}
-          disabled={!address}
+          disabled={!address || isBusy}
+          aria-busy={isBusy}
           className="rounded-md border border-line bg-surface-2 px-4 py-2 text-sm font-medium text-ink hover:bg-bg disabled:opacity-50"
         >
-          Withdraw
+          {isBusy ? "Withdrawing…" : "Withdraw"}
         </button>
       </div>
-      {status && <p className="text-xs text-muted">{status}</p>}
+      {status && (
+        <p role="status" className="text-xs text-muted">
+          {status}
+        </p>
+      )}
     </div>
   );
 }

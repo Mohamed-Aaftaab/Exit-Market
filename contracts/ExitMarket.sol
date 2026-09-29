@@ -14,7 +14,7 @@ import {
     IOutbox,
     ITradeableExitReceiver
 } from "./interfaces/IArbitrumBridge.sol";
-import {ExitClaim, ExitRecord, IExitBuyer, IExitMarket} from "./interfaces/IExitMarket.sol";
+import {ExitClaim, ExitRecord, IExitBuyer, IExitMarket, PayoutProof} from "./interfaces/IExitMarket.sol";
 import {IRootVerifier} from "./interfaces/IRootVerifier.sol";
 import {ExitKeys} from "./libraries/ExitKeys.sol";
 import {ExitLeaf} from "./libraries/ExitLeaf.sol";
@@ -166,7 +166,8 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         address outbox = _knownGateway(exit.gateway).outbox;
         if (IOutbox(outbox).isSpent(exit.index)) {
             // Spent while listed: forward the tokens, but only if the slot provably holds THIS exit.
-            if (!_paidOut(outbox, exit, exit.sendRoot, new bytes32[](0))) revert ExitNeedsSettlement(exit.index);
+            PayoutProof memory asProven = PayoutProof(exit.index, exit.sendRoot, new bytes32[](0));
+            if (!_paidOut(outbox, exit, asProven)) revert ExitNeedsSettlement(exit.index);
             return _settle(id, l);
         }
 
@@ -178,13 +179,11 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     }
 
     /// @inheritdoc IExitMarket
-    function settle(bytes32 id, bytes32 confirmedRoot, bytes32[] calldata proof) external nonReentrant {
+    function settle(bytes32 id, PayoutProof calldata payout) external nonReentrant {
         Listing storage l = _listings[id];
         if (l.status != Status.Listed) revert NotListed(id);
         ExitRecord memory exit = l.exit;
-        if (!_paidOut(_knownGateway(exit.gateway).outbox, exit, confirmedRoot, proof)) {
-            revert ExitNotPaidOut(exit.index);
-        }
+        if (!_paidOut(_knownGateway(exit.gateway).outbox, exit, payout)) revert ExitNotPaidOut(payout.index);
         _settle(id, l);
     }
 
@@ -209,22 +208,14 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     }
 
     /// @inheritdoc IExitMarket
-    function isExitPaidOut(ExitRecord calldata exit, bytes32 confirmedRoot, bytes32[] calldata proof)
-        external
-        view
-        returns (bool)
-    {
-        return _paidOut(_knownGateway(exit.gateway).outbox, exit, confirmedRoot, proof);
+    function isExitPaidOut(ExitRecord calldata exit, PayoutProof calldata payout) external view returns (bool) {
+        return _paidOut(_knownGateway(exit.gateway).outbox, exit, payout);
     }
 
     /// @inheritdoc IExitMarket
-    function isExitDisproven(ExitRecord calldata exit, ExitClaim calldata canonical) external view returns (bool) {
+    function isExitRejected(ExitRecord calldata exit) external view returns (bool) {
         GatewayConfig storage cfg = _knownGateway(exit.gateway);
-        if (IOutbox(cfg.outbox).roots(canonical.sendRoot) == bytes32(0)) return false;
-
-        bytes32 item = _itemOf(cfg.childGateway, exit.gateway, exit.exitNum, canonical);
-        if (item == exit.itemHash) return false; // the canonical exit IS this exit
-        return ExitLeaf.rootFromItem(item, canonical.proof, canonical.index) == canonical.sendRoot;
+        return cfg.verifier.isRootRejected(cfg.rollup, cfg.outbox, exit.sendRoot, exit.nodeNum);
     }
 
     /// @inheritdoc IExitMarket
@@ -248,9 +239,15 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         if (owner_ != address(this)) revert ExitNotHeld();
 
         // exitNum and gateway come from the gateway call, never from the seller's claim.
-        bytes32 item = _itemOf(cfg.childGateway, gateway, exitNum, c);
+        ExitLeaf.Leaf memory leaf = _leafOf(cfg.childGateway, gateway, exitNum, c);
+        bytes32 item = ExitLeaf.itemHash(leaf);
         bytes32 root = ExitLeaf.rootFromItem(item, c.proof, c.index);
-        if (root != c.sendRoot) revert ProofMismatch(root, c.sendRoot);
+        if (root != c.sendRoot) {
+            // WETH gateway leaves carry value = amount (see ExitLeaf.itemHashWithValue for why this is safe).
+            item = ExitLeaf.itemHashWithValue(leaf, c.amount);
+            root = ExitLeaf.rootFromItem(item, c.proof, c.index);
+            if (root != c.sendRoot) revert ProofMismatch(root, c.sendRoot);
+        }
 
         (bool valid, bool pending, uint64 deadlineBlock) =
             cfg.verifier.verifyRoot(cfg.rollup, cfg.outbox, c.sendRoot, c.nodeNum, c.blockHash);
@@ -274,25 +271,23 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         });
     }
 
-    function _itemOf(address childGateway, address gateway, uint256 exitNum, ExitClaim memory c)
+    function _leafOf(address childGateway, address gateway, uint256 exitNum, ExitClaim memory c)
         private
         pure
-        returns (bytes32)
+        returns (ExitLeaf.Leaf memory)
     {
-        return ExitLeaf.itemHash(
-            ExitLeaf.Leaf({
-                childGateway: childGateway,
-                parentGateway: gateway,
-                l1Token: c.l1Token,
-                from: c.from,
-                initialDestination: c.initialDestination,
-                amount: c.amount,
-                exitNum: exitNum,
-                l2Block: c.l2Block,
-                l1Block: c.l1Block,
-                l2Timestamp: c.l2Timestamp
-            })
-        );
+        return ExitLeaf.Leaf({
+            childGateway: childGateway,
+            parentGateway: gateway,
+            l1Token: c.l1Token,
+            from: c.from,
+            initialDestination: c.initialDestination,
+            amount: c.amount,
+            exitNum: exitNum,
+            l2Block: c.l2Block,
+            l1Block: c.l1Block,
+            l2Timestamp: c.l2Timestamp
+        });
     }
 
     function _list(bytes32 id, ExitRecord memory exit, address seller, bytes memory params) private {
@@ -344,16 +339,13 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
 
     /// @dev Spent bit alone is not enough (it is keyed by index): a fake exit proven against a node that is
     ///      later rejected can share an index with a real message. A confirmed root is canonical, so if the
-    ///      index holds our item under a confirmed root, the executed message at that index was ours.
-    function _paidOut(address outbox, ExitRecord memory exit, bytes32 confirmedRoot, bytes32[] memory proof)
-        private
-        view
-        returns (bool)
-    {
-        if (!IOutbox(outbox).isSpent(exit.index)) return false;
-        if (IOutbox(outbox).roots(confirmedRoot) == bytes32(0)) return false;
-        if (confirmedRoot == exit.sendRoot) return true; // proven at verification time
-        return ExitLeaf.rootFromItem(exit.itemHash, proof, exit.index) == confirmedRoot;
+    ///      index holds our item under a confirmed root, the message executed at that index was ours.
+    ///      The index is a parameter: an exit proven against a bogus node may carry a non-canonical index.
+    function _paidOut(address outbox, ExitRecord memory exit, PayoutProof memory p) private view returns (bool) {
+        if (!IOutbox(outbox).isSpent(p.index)) return false;
+        if (IOutbox(outbox).roots(p.confirmedRoot) == bytes32(0)) return false;
+        if (p.index == exit.index && p.confirmedRoot == exit.sendRoot) return true; // proven at verification
+        return ExitLeaf.rootFromItem(exit.itemHash, p.proof, p.index) == p.confirmedRoot;
     }
 
     function _requireLive(GatewayConfig memory cfg, ExitRecord memory exit) private view {

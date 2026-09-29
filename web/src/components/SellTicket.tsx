@@ -3,7 +3,8 @@
 import { ProofTrace } from "@/components/ProofTrace";
 import { usePreparedSale, useSellExit, type PreparedSale } from "@/hooks/useExitSale";
 import type { WithdrawalRow } from "@/hooks/useWithdrawals";
-import { blocksToDuration, bps, usdg } from "@/lib/format";
+import { arbitrumSepolia } from "wagmi/chains";
+import { blocksToDuration, bps, errorText, usdg } from "@/lib/format";
 
 const BPS = 10_000n;
 
@@ -35,6 +36,22 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
   if (!row) {
     return <p className="p-6 text-sm text-muted">Select a withdrawal to see what it is worth today.</p>;
   }
+  // Checked before status: the post-sale refresh flips this row to "transferred".
+  if (sell.isSuccess) {
+    return (
+      <div className="p-5">
+        <a
+          href={`${arbitrumSepolia.blockExplorers.default.url}/tx/${sell.data}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          role="status"
+          className="block rounded-md bg-ok-soft px-4 py-3 text-center text-sm font-medium text-ok"
+        >
+          Sold. {usdg(breakdownOf(sell.variables).receive)} USDG sent to your wallet on Arbitrum ↗
+        </a>
+      </div>
+    );
+  }
   if (row.status === "awaiting-assertion") {
     return (
       <p className="p-6 text-sm text-muted">
@@ -47,11 +64,16 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
     return <p className="p-6 text-sm text-muted">This exit has already been sold or claimed.</p>;
   }
   if (prepared.isPending) return <p className="p-6 text-sm text-muted">Building proof from live chain data…</p>;
-  if (prepared.isError) return <p className="p-6 text-sm text-bad">{prepared.error.message}</p>;
+  if (prepared.isError) {
+    return (
+      <p role="alert" className="p-6 text-sm text-bad">
+        {errorText(prepared.error)}
+      </p>
+    );
+  }
 
   const sale = prepared.data;
   const b = breakdownOf(sale);
-  const isDone = sell.isSuccess;
 
   return (
     <div className="space-y-5 p-5">
@@ -69,26 +91,20 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
 
       <ProofTrace sale={sale} />
 
-      {isDone ? (
-        <a
-          href={`https://sepolia.arbiscan.io/tx/${sell.data}`}
-          target="_blank"
-          rel="noreferrer"
-          className="block rounded-md bg-ok-soft px-4 py-3 text-center text-sm font-medium text-ok"
-        >
-          Sold. {usdg(b.receive)} USDG sent to your wallet on Arbitrum ↗
-        </a>
-      ) : (
-        <button
-          type="button"
-          disabled={sell.isPending}
-          onClick={() => sell.mutate(sale)}
-          className="w-full rounded-md bg-accent px-4 py-3 text-sm font-semibold text-accent-ink hover:opacity-90 disabled:opacity-60"
-        >
-          {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}
-        </button>
+      <button
+        type="button"
+        disabled={sell.isPending}
+        aria-busy={sell.isPending}
+        onClick={() => sell.mutate(sale)}
+        className="w-full rounded-md bg-accent px-4 py-3 text-sm font-semibold text-accent-ink hover:opacity-90 disabled:opacity-60"
+      >
+        {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}
+      </button>
+      {sell.isError && (
+        <p role="alert" className="text-sm text-bad">
+          {errorText(sell.error)}
+        </p>
       )}
-      {sell.isError && <p className="text-sm text-bad">{sell.error.message.split("\n")[0]}</p>}
     </div>
   );
 }

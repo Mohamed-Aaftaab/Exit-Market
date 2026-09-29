@@ -30,15 +30,23 @@ library ExitLeaf {
         uint256 l2Timestamp;
     }
 
-    /// @notice Hash of the Outbox item for `leaf` (AbsOutbox.calculateItemHash).
+    /// @notice Hash of the Outbox item for `leaf` (AbsOutbox.calculateItemHash) with zero callvalue,
+    ///         as sent by every standard/custom/USDC gateway.
     function itemHash(Leaf memory leaf) internal pure returns (bytes32) {
+        return itemHashWithValue(leaf, 0);
+    }
+
+    /// @notice Same, with an explicit callvalue: the WETH gateway sends the withdrawn amount as value.
+    /// @dev Trying value = amount is safe for any gateway: the item commits to the value, and a gateway that
+    ///      never sends callvalue can never have such a leaf in its send tree.
+    function itemHashWithValue(Leaf memory leaf, uint256 value) internal pure returns (bytes32) {
         bytes memory data = abi.encodeCall(
             IL1ArbitrumExtendedGateway.finalizeInboundTransfer,
             (leaf.l1Token, leaf.from, leaf.initialDestination, leaf.amount, abi.encode(leaf.exitNum, bytes("")))
         );
         return keccak256(
             abi.encodePacked(
-                leaf.childGateway, leaf.parentGateway, leaf.l2Block, leaf.l1Block, leaf.l2Timestamp, uint256(0), data
+                leaf.childGateway, leaf.parentGateway, leaf.l2Block, leaf.l1Block, leaf.l2Timestamp, value, data
             )
         );
     }

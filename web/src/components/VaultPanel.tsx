@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { parseUnits, type Address } from "viem";
+import type { Address } from "viem";
 import { useAccount, usePublicClient, useReadContracts, useSwitchChain, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
-import { ARBITRUM_SEPOLIA, DEPLOYMENT, USDG_DECIMALS, erc20Abi, vaultAbi } from "@/lib/contracts";
-import { bps, usdg } from "@/lib/format";
+import { ARBITRUM_SEPOLIA, DEPLOYMENT, erc20Abi, vaultAbi } from "@/lib/contracts";
+import { bps, errorText, parseUsdgInput, usdg } from "@/lib/format";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -18,43 +18,51 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function useVaultStats(vault: Address, user: Address | undefined) {
   const chainId = arbitrumSepolia.id;
+  const holder = user ?? vault;
   const reads = useReadContracts({
+    allowFailure: false,
     contracts: [
       { chainId, address: vault, abi: vaultAbi, functionName: "totalAssets" },
       { chainId, address: vault, abi: vaultAbi, functionName: "idleAssets" },
       { chainId, address: vault, abi: vaultAbi, functionName: "outstandingCost" },
       { chainId, address: vault, abi: vaultAbi, functionName: "aprBps" },
       { chainId, address: vault, abi: vaultAbi, functionName: "baseFeeBps" },
-      { chainId, address: vault, abi: vaultAbi, functionName: "maxWithdraw", args: [user ?? vault] },
-      { chainId, address: ARBITRUM_SEPOLIA.usdg, abi: erc20Abi, functionName: "balanceOf", args: [user ?? vault] },
+      { chainId, address: vault, abi: vaultAbi, functionName: "maxWithdraw", args: [holder] },
+      { chainId, address: vault, abi: vaultAbi, functionName: "SHARE_LOCK" },
+      { chainId, address: ARBITRUM_SEPOLIA.usdg, abi: erc20Abi, functionName: "balanceOf", args: [holder] },
     ],
-    query: { refetchInterval: 15_000 },
+    query: { refetchInterval: 30_000 },
   });
-  const r = reads.data?.map((x) => x.result);
+  const [totalAssets, idle, outstanding, aprBps, baseFeeBps, withdrawable, shareLock, walletUsdg] = reads.data ?? [];
   return {
+    error: reads.error,
     refetch: reads.refetch,
-    totalAssets: r?.[0] as bigint | undefined,
-    idle: r?.[1] as bigint | undefined,
-    outstanding: r?.[2] as bigint | undefined,
-    aprBps: r?.[3] as number | undefined,
-    baseFeeBps: r?.[4] as number | undefined,
-    withdrawable: user ? (r?.[5] as bigint | undefined) : undefined,
-    walletUsdg: user ? (r?.[6] as bigint | undefined) : undefined,
+    totalAssets,
+    idle,
+    outstanding,
+    aprBps,
+    baseFeeBps,
+    shareLockHours: shareLock === undefined ? undefined : Number(shareLock) / 3600,
+    withdrawable: user ? withdrawable : undefined,
+    walletUsdg: user ? walletUsdg : undefined,
   };
 }
 
-function DepositForm({ vault, onDone }: { vault: Address; onDone: () => void }) {
+function DepositForm({ vault, lockHours, onDone }: { vault: Address; lockHours?: number; onDone: () => void }) {
   const { address, chainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const parent = usePublicClient({ chainId: arbitrumSepolia.id });
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<string>();
+  const [isBusy, setIsBusy] = useState(false);
 
   async function deposit() {
-    if (!address || !parent) return;
-    const assets = parseUnits(amount || "0", USDG_DECIMALS);
-    if (assets <= 0n) return setStatus("Enter an amount");
+    if (!address || !parent || isBusy) return;
+    const assets = parseUsdgInput(amount);
+    if (assets === undefined) return setStatus("Enter a USDG amount with at most 6 decimals");
+
+    setIsBusy(true);
     try {
       if (chainId !== arbitrumSepolia.id) await switchChainAsync({ chainId: arbitrumSepolia.id });
       setStatus("Approving USDG…");
@@ -65,7 +73,7 @@ function DepositForm({ vault, onDone }: { vault: Address; onDone: () => void }) 
         functionName: "approve",
         args: [vault, assets],
       });
-      await parent.waitForTransactionReceipt({ hash: approve });
+      await parent.waitForTransactionReceipt({ hash: approve, timeout: 120_000 });
       setStatus("Depositing…");
       const hash = await writeContractAsync({
         chainId: arbitrumSepolia.id,
@@ -74,12 +82,14 @@ function DepositForm({ vault, onDone }: { vault: Address; onDone: () => void }) 
         functionName: "deposit",
         args: [assets, address],
       });
-      await parent.waitForTransactionReceipt({ hash });
-      setStatus("Deposited. Shares unlock in 24h.");
+      await parent.waitForTransactionReceipt({ hash, timeout: 120_000 });
+      setStatus(lockHours ? `Deposited. Shares unlock in ${lockHours}h.` : "Deposited.");
       setAmount("");
       onDone();
     } catch (err) {
-      setStatus(err instanceof Error ? err.message.split("\n")[0] : "Deposit failed");
+      setStatus(errorText(err));
+    } finally {
+      setIsBusy(false);
     }
   }
 
@@ -94,19 +104,25 @@ function DepositForm({ vault, onDone }: { vault: Address; onDone: () => void }) 
           inputMode="decimal"
           placeholder="USDG"
           value={amount}
+          disabled={isBusy}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
           className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-sm text-ink"
         />
         <button
           type="button"
           onClick={deposit}
-          disabled={!address}
+          disabled={!address || isBusy}
+          aria-busy={isBusy}
           className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
         >
-          Deposit
+          {isBusy ? "Depositing…" : "Deposit"}
         </button>
       </div>
-      {status && <p className="text-xs text-muted">{status}</p>}
+      {status && (
+        <p role="status" className="text-xs text-muted">
+          {status}
+        </p>
+      )}
     </div>
   );
 }
@@ -120,6 +136,11 @@ export function VaultPanel() {
 
   return (
     <div className="space-y-5 p-5">
+      {stats.error && (
+        <p role="alert" className="text-sm text-bad">
+          Could not read the vault: {errorText(stats.error)}
+        </p>
+      )}
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat label="Total assets" value={usdg(stats.totalAssets)} />
         <Stat label="Available now" value={usdg(stats.idle)} />
@@ -128,7 +149,7 @@ export function VaultPanel() {
         <Stat label="Base fee" value={stats.baseFeeBps === undefined ? "—" : bps(stats.baseFeeBps)} />
         <Stat label="Your withdrawable" value={usdg(stats.withdrawable)} />
       </dl>
-      <DepositForm vault={vault} onDone={() => stats.refetch()} />
+      <DepositForm vault={vault} lockHours={stats.shareLockHours} onDone={() => stats.refetch()} />
       <p className="text-xs text-muted">Wallet: {usdg(stats.walletUsdg)} USDG on Arbitrum Sepolia</p>
     </div>
   );

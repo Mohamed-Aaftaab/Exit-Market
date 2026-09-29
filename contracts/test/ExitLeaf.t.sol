@@ -93,4 +93,12 @@ contract ExitLeafTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExitLeaf.PathNotMinimal.selector, index, len));
         harness.rootOf(_realLeaf(), new bytes32[](len), index);
     }
+
+    function test_itemHash_equalsValueZeroAndDiffersFromValueEqualAmount() public pure {
+        ExitLeaf.Leaf memory leaf = _realLeaf();
+
+        assertEq(ExitLeaf.itemHash(leaf), ExitLeaf.itemHashWithValue(leaf, 0));
+        assertTrue(ExitLeaf.itemHash(leaf) != ExitLeaf.itemHashWithValue(leaf, leaf.amount));
+        assertTrue(ExitLeaf.itemHashWithValue(leaf, 1) != ExitLeaf.itemHashWithValue(leaf, 2));
+    }
 }

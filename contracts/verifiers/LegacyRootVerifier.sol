@@ -28,4 +28,14 @@ contract LegacyRootVerifier is IRootVerifier {
 
         return (true, true, node.deadlineBlock);
     }
+
+    /// @inheritdoc IRootVerifier
+    function isRootRejected(address rollup, address outbox, bytes32 sendRoot, uint64 nodeNum)
+        external
+        view
+        returns (bool)
+    {
+        // Confirmed nodes publish their root to the Outbox; a resolved node without it was rejected.
+        return IOutbox(outbox).roots(sendRoot) == bytes32(0) && nodeNum < ILegacyRollup(rollup).firstUnresolvedNode();
+    }
 }

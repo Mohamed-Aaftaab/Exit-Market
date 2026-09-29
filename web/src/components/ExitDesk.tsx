@@ -6,6 +6,7 @@ import { NewWithdrawal } from "@/components/NewWithdrawal";
 import { SellTicket } from "@/components/SellTicket";
 import { WithdrawalList } from "@/components/WithdrawalList";
 import { useWithdrawals, type WithdrawalRow } from "@/hooks/useWithdrawals";
+import { errorText } from "@/lib/format";
 
 function Panel({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
   return (
@@ -40,7 +41,9 @@ export function ExitDesk() {
         {!address && <p className="px-4 py-8 text-center text-sm text-muted">Connect a wallet to see withdrawals.</p>}
         {address && withdrawals.isPending && <p className="px-4 py-8 text-center text-sm text-muted">Reading Xai Testnet…</p>}
         {address && withdrawals.isError && (
-          <p className="px-4 py-8 text-center text-sm text-bad">{withdrawals.error.message}</p>
+          <p role="alert" className="px-4 py-8 text-center text-sm text-bad">
+            {errorText(withdrawals.error)}
+          </p>
         )}
         {address && withdrawals.data && (
           <WithdrawalList rows={rows} selected={selected} onSelect={(r) => setSelectedHash(r.txHash)} />
@@ -49,7 +52,8 @@ export function ExitDesk() {
       </Panel>
 
       <Panel title="Sell instantly">
-        <SellTicket row={selected} />
+        {/* keyed: mutation state (e.g. "Sold") must not carry over to another withdrawal */}
+        <SellTicket key={selected?.txHash ?? "none"} row={selected} />
       </Panel>
     </div>
   );

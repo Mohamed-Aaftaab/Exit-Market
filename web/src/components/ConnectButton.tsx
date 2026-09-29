@@ -15,6 +15,7 @@ export function ConnectButton() {
         onClick={() => disconnect()}
         className="rounded-md border border-line bg-surface px-3 py-1.5 font-mono text-sm text-ink hover:bg-surface-2"
         title="Disconnect"
+        aria-label={`Disconnect wallet ${address}`}
       >
         {shortHex(address)}
       </button>

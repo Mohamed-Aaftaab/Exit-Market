@@ -15,4 +15,12 @@ interface IRootVerifier {
         external
         view
         returns (bool valid, bool pending, uint64 deadlineBlock);
+
+    /// @notice True if the node that committed `sendRoot` was resolved WITHOUT confirming it (i.e. rejected).
+    /// @dev A rejected node proves nothing either way about the exit: a real exit is re-committed by the
+    ///      honest node. Buyers use this only to stop carrying the exit at cost (it can still be collected).
+    function isRootRejected(address rollup, address outbox, bytes32 sendRoot, uint64 nodeNum)
+        external
+        view
+        returns (bool);
 }

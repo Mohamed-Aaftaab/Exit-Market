@@ -90,7 +90,7 @@ async function loadWithdrawals(parent: PublicClient, child: PublicClient, user: 
   return { rows: rows.sort((a, b) => Number(b.exitNum - a.exitNum)), latestNode };
 }
 
-/** The connected user's USDG withdrawals from Xai Testnet, refreshed every 30s. */
+/** The connected user's USDG withdrawals from Xai Testnet, refreshed every 60s. */
 export function useWithdrawals(user: Address | undefined) {
   const parent = usePublicClient({ chainId: arbitrumSepolia.id });
   const child = usePublicClient({ chainId: xaiTestnet.id });
@@ -98,7 +98,7 @@ export function useWithdrawals(user: Address | undefined) {
   return useQuery({
     queryKey: ["withdrawals", user],
     enabled: Boolean(user && parent && child),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     queryFn: () => loadWithdrawals(parent as PublicClient, child as PublicClient, user as Address),
   });
 }

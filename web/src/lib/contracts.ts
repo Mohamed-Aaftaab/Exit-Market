@@ -3,8 +3,14 @@ import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "@shared/networks.ts";
 
 export { ARBITRUM_SEPOLIA, XAI_TESTNET };
 
+/** A malformed env value must not white-screen the app: treat it as "not configured". */
 function envAddress(value: string | undefined): Address | undefined {
-  return value ? getAddress(value) : undefined;
+  if (!value) return undefined;
+  try {
+    return getAddress(value);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Filled after `npx hardhat run scripts/deploy.ts --network arbitrumSepolia` (see web/.env.example). */
@@ -28,6 +34,7 @@ export const vaultAbi = parseAbi([
   "function outstandingCost() view returns (uint256)",
   "function baseFeeBps() view returns (uint16)",
   "function aprBps() view returns (uint16)",
+  "function SHARE_LOCK() view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
   "function convertToAssets(uint256 shares) view returns (uint256)",
   "function maxWithdraw(address owner) view returns (uint256)",

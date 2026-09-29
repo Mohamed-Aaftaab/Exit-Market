@@ -25,8 +25,8 @@ function stepsOf(sale: PreparedSale): Step[] {
     },
     {
       label: "Not yet claimed",
-      detail: `Outbox.isSpent(${p.index}) = false`,
-      ok: true,
+      detail: `Outbox.isSpent(${p.index}) = ${!sale.checks.unspent}`,
+      ok: sale.checks.unspent,
     },
   ];
 }
@@ -50,7 +50,7 @@ export function ProofTrace({ sale }: { sale: PreparedSale }) {
               {step.label}
               <span className="sr-only">{step.ok ? " (verified)" : " (failed)"}</span>
             </span>
-            <span className="block truncate font-mono text-xs text-muted">{step.detail}</span>
+            <span className="block break-all font-mono text-xs text-muted">{step.detail}</span>
           </span>
         </li>
       ))}
