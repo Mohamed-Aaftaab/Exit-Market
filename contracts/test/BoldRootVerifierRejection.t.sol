@@ -251,6 +251,20 @@ contract BoldRootVerifierRejectionTest is BoldFixture {
         verifier.markRejected(address(rollup), child.hash, loser.hash, winner.hash);
     }
 
+    function test_markRejected_descendantProofIsBoundedByMaxPendingDepth() public {
+        uint256 maxDepth = verifier.MAX_PENDING_DEPTH();
+        bytes32[] memory h = _postChain(GENESIS, maxDepth + 1, true);
+        Posted memory winner = _postRegistered(GENESIS, ROOT_B, 2);
+        rollup.confirmAssertion(winner.hash);
+
+        // the leaf is one link further from h[0] than the walk may go
+        vm.expectRevert(abi.encodeWithSelector(BoldRootVerifier.NotDescendant.selector, h[maxDepth], h[0]));
+        verifier.markRejected(address(rollup), h[maxDepth], h[0], winner.hash);
+
+        verifier.markRejected(address(rollup), h[maxDepth - 1], h[0], winner.hash);
+        assertTrue(verifier.rejectedRoots(address(rollup), _chainRoot(maxDepth - 1)));
+    }
+
     // ================================================================ isRootRejected
 
     function test_isRootRejected_falseUntilProvenRejected() public {

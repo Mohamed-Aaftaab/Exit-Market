@@ -19,6 +19,7 @@ abstract contract IntentFixture is ExitFixture {
     uint256 internal constant LP_DEPOSIT = 500_000e6;
     uint256 internal constant RELAYER_FEE = 25e6;
     uint256 internal constant ORDER_TTL = 1 hours;
+    uint256 internal constant RECLAIM_GRACE = 3 days;
     uint256 internal constant SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
     bytes32 internal constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -119,6 +120,16 @@ abstract contract IntentFixture is ExitFixture {
     ) internal returns (uint256) {
         vm.prank(who);
         return router.settle(w.claim, o, sig);
+    }
+
+    function _reclaimAs(address who, Withdrawal memory w) internal {
+        vm.prank(who);
+        router.reclaim(w.gateway, w.exitNum, w.claim);
+    }
+
+    /// @dev First moment a third party may reclaim `w`: l2Timestamp of the withdrawal + grace.
+    function _unlockTime(Withdrawal memory w) internal pure returns (uint256) {
+        return w.claim.l2Timestamp + RECLAIM_GRACE;
     }
 
     /// @dev Signs `o` as the user and settles it through `relayer`.

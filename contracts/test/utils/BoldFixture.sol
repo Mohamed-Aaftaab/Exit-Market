@@ -87,4 +87,21 @@ abstract contract BoldFixture is Test {
         _register(sibling);
         rollup.confirmAssertion(sibling.hash);
     }
+
+    function _chainRoot(uint256 i) internal pure returns (bytes32) {
+        return keccak256(abi.encode("chain root", i));
+    }
+
+    /// @dev Posts `length` linked pending assertions under `parent` (link i commits `_chainRoot(i)`), optionally
+    ///      registering each. Returns their hashes, oldest first.
+    function _postChain(bytes32 parent, uint256 length, bool register) internal returns (bytes32[] memory hashes) {
+        hashes = new bytes32[](length);
+        bytes32 cursor = parent;
+        for (uint256 i = 0; i < length; ++i) {
+            Posted memory p = _post(cursor, _chainRoot(i), 1000 + i);
+            if (register) _register(p);
+            hashes[i] = p.hash;
+            cursor = p.hash;
+        }
+    }
 }

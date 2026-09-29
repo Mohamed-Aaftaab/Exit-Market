@@ -499,8 +499,7 @@ contract ExitIntentRouterTest is IntentFixture {
         _settleAs(relayer, ws[0], o, sig);
         assertEq(_ownerOf(ws[0]), address(router));
 
-        vm.prank(stranger);
-        router.reclaim(ws[0].gateway, ws[0].exitNum, ws[0].claim);
+        _reclaimAs(user, ws[0]);
         assertEq(_ownerOf(ws[0]), user);
     }
 
