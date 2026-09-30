@@ -1,5 +1,15 @@
-import { type Address, type Hex, type PublicClient, type WalletClient, parseAbi } from "viem";
-import { buildExitProof } from "./exitProof.ts";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  type Address,
+  type Hex,
+  type PublicClient,
+  type WalletClient,
+  parseAbi,
+} from "viem";
+import { exitIntentRouterAbi, exitMarketAbi, exitVaultAbi } from "./abis.ts";
+import { InvalidWithdrawalError, NotYetAssertedError, buildExitProof } from "./exitProof.ts";
+import { claimOf } from "./hookData.ts";
 
 /** Mirrors IExitIntentRouter.SellOrder (field order matters for EIP-712). */
 export interface SellOrder {
@@ -27,19 +37,53 @@ export function routerDomain(router: Address, chainId: number) {
   return { name: "ExitIntentRouter", version: "1", chainId, verifyingContract: router } as const;
 }
 
-const routerAbi = parseAbi([
-  "struct ExitClaim { address initialDestination; address l1Token; address from; uint256 amount; uint256 l2Block; uint256 l1Block; uint256 l2Timestamp; uint256 index; bytes32[] proof; bytes32 sendRoot; uint64 nodeNum; bytes32 blockHash; }",
-  "struct SellOrder { address gateway; uint256 exitNum; address buyer; uint256 minProceeds; uint256 relayerFee; uint64 deadline; }",
-  "function settle(ExitClaim claim, SellOrder order, bytes signature) returns (uint256)",
+/**
+ * The router's ABI plus every custom error that can surface inside settle(): the market's and the vault's revert
+ * data bubbles up through the gateway call, and viem can only name an error it has in the ABI.
+ */
+const settleAbi = [
+  ...exitIntentRouterAbi,
+  ...exitMarketAbi.filter((item) => item.type === "error"),
+  ...exitVaultAbi.filter((item) => item.type === "error"),
+] as const;
+
+const gatewayOwnerAbi = parseAbi([
+  "function getExternalCall(uint256 exitNum, address initialDestination, bytes initialData) view returns (address target, bytes data)",
 ]);
 
 export type RelayResult =
   | { status: "waiting"; reason: string }
-  | { status: "settled"; txHash: Hex };
+  | { status: "settled"; txHash: Hex }
+  /** The router no longer owns the exit: another relayer settled it, or the seller reclaimed it. */
+  | { status: "done-elsewhere"; owner: Address };
+
+/** A settlement the chain rejected, with the contract's reason (a custom error name or a revert string). */
+export class SettlementRevertedError extends Error {
+  readonly reason: string;
+
+  constructor(reason: string) {
+    super(`Settlement would revert: ${reason}`);
+    this.name = "SettlementRevertedError";
+    this.reason = reason;
+  }
+}
+
+/** Names the revert reason inside a viem error: a custom error (with args), a revert string, or the raw selector. */
+export function revertReason(err: unknown): string | undefined {
+  if (!(err instanceof BaseError)) return undefined;
+  const reverted = err.walk((e) => e instanceof ContractFunctionRevertedError);
+  if (!(reverted instanceof ContractFunctionRevertedError)) return undefined;
+  if (reverted.data?.errorName) {
+    const args = reverted.data.args?.map((a) => String(a)).join(", ");
+    return args ? `${reverted.data.errorName}(${args})` : reverted.data.errorName;
+  }
+  return reverted.reason ?? reverted.signature ?? "unknown revert";
+}
 
 /**
  * Settles a gasless exit if its withdrawal is already committed by a rollup node; otherwise reports
- * "waiting". Stateless and idempotent from the caller's point of view: safe to poll.
+ * "waiting". Stateless and idempotent from the caller's point of view: safe to poll, and safe to call after
+ * someone else settled (reports "done-elsewhere" instead of spending gas on a doomed transaction).
  */
 export async function trySettle(params: {
   parent: PublicClient;
@@ -53,6 +97,16 @@ export async function trySettle(params: {
   signature: Hex;
 }): Promise<RelayResult> {
   const { parent, child, wallet, router, order } = params;
+
+  // Cheapest check first: once the router no longer owns the exit there is nothing left to settle.
+  const [owner] = await parent.readContract({
+    address: order.gateway,
+    abi: gatewayOwnerAbi,
+    functionName: "getExternalCall",
+    args: [order.exitNum, router, "0x"],
+  });
+  if (owner.toLowerCase() !== router.toLowerCase()) return { status: "done-elsewhere", owner };
+
   let w;
   try {
     w = await buildExitProof({
@@ -61,40 +115,33 @@ export async function trySettle(params: {
       rollup: params.rollup,
       childGateway: params.childGateway,
       withdrawalTx: params.withdrawalTx,
+      exitNum: order.exitNum,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("not yet asserted")) return { status: "waiting", reason: message };
+    if (err instanceof NotYetAssertedError) return { status: "waiting", reason: err.message };
     throw err;
   }
-  if (w.exitNum !== order.exitNum) throw new Error("Order exitNum does not match the withdrawal");
-  if (w.initialDestination.toLowerCase() !== router.toLowerCase()) throw new Error("Withdrawal was not sent to the router");
+  if (w.initialDestination.toLowerCase() !== router.toLowerCase()) {
+    throw new InvalidWithdrawalError("Withdrawal was not sent to the router");
+  }
 
-  const p = w.proof;
-  const claim = {
-    initialDestination: w.initialDestination,
-    l1Token: p.l1Token,
-    from: p.from,
-    amount: p.amount,
-    l2Block: p.l2Block,
-    l1Block: p.l1Block,
-    l2Timestamp: p.l2Timestamp,
-    index: p.index,
-    proof: p.merkleProof,
-    sendRoot: p.sendRoot,
-    nodeNum: p.nodeNum,
-    blockHash: p.blockHash,
-  };
   const account = wallet.account;
   if (!account) throw new Error("Relayer wallet has no account");
   // Simulate first: the relayer never pays gas for a settlement that would revert.
-  const { request } = await parent.simulateContract({
-    address: router,
-    abi: routerAbi,
-    functionName: "settle",
-    args: [claim, order, params.signature],
-    account,
-  });
+  let request;
+  try {
+    ({ request } = await parent.simulateContract({
+      address: router,
+      abi: settleAbi,
+      functionName: "settle",
+      args: [claimOf(w), order, params.signature],
+      account,
+    }));
+  } catch (err) {
+    const reason = revertReason(err);
+    if (reason) throw new SettlementRevertedError(reason);
+    throw err;
+  }
   const txHash = await wallet.writeContract({ ...request, chain: wallet.chain, account });
   const receipt = await parent.waitForTransactionReceipt({ hash: txHash });
   if (receipt.status !== "success") throw new Error(`Settlement reverted: ${txHash}`);

@@ -5,7 +5,7 @@ import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "w
 import { arbitrumSepolia } from "wagmi/chains";
 import { encodePacked, keccak256, type Hash, type PublicClient } from "viem";
 import { buildExitProof, type Withdrawal } from "@shared/exitProof.ts";
-import { encodeSellToBuyer, toExitRecord } from "@shared/hookData.ts";
+import { encodeSellToBuyer, netOfMarketFee, toExitRecord } from "@shared/hookData.ts";
 import { DEPLOYMENT, XAI_TESTNET, marketAbi, outboxAbi, parentGatewayAbi, rollupAbi, vaultAbi } from "@/lib/contracts";
 import { xaiTestnet } from "@/lib/wagmi";
 import type { WithdrawalRow } from "./useWithdrawals";
@@ -115,7 +115,14 @@ export function useSellExit() {
         address: XAI_TESTNET.tokenBridge.parentErc20Gateway,
         abi: parentGatewayAbi,
         functionName: "transferExitAndCall",
-        args: [w.exitNum, w.initialDestination, market, "0x", encodeSellToBuyer(w, vault, sale.vaultQuote)],
+        // The seller's floor is net of the market fee; the quote only rises toward the deadline, so it holds.
+        args: [
+          w.exitNum,
+          w.initialDestination,
+          market,
+          "0x",
+          encodeSellToBuyer(w, vault, netOfMarketFee(sale.vaultQuote, sale.marketFeeBps)),
+        ],
       });
       const receipt = await parent.waitForTransactionReceipt({ hash, timeout: 120_000 });
       if (receipt.status !== "success") throw new Error("Sale transaction reverted");

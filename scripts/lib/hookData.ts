@@ -17,7 +17,8 @@ export const Action = { LIST: 0, SELL_TO_BUYER: 1 } as const;
 const EXIT_CLAIM =
   "(address initialDestination, address l1Token, address from, uint256 amount, uint256 l2Block, uint256 l1Block, uint256 l2Timestamp, uint256 index, bytes32[] proof, bytes32 sendRoot, uint64 nodeNum, bytes32 blockHash)";
 
-function claimOf(w: Withdrawal) {
+/** The ExitClaim a seller (or the router's relayer) submits for `w`. */
+export function claimOf(w: Withdrawal) {
   const p = w.proof;
   return {
     initialDestination: w.initialDestination,
@@ -44,7 +45,15 @@ export function encodeList(w: Withdrawal, price: bigint, expiry: bigint): Hex {
   return encode(Action.LIST, w, encodeAbiParameters(parseAbiParameters("uint256, uint64"), [price, expiry]));
 }
 
-/** `data` for gateway.transferExitAndCall that sells the exit instantly to `buyer` (e.g. ExitVault). */
+/** What a seller receives for `price` after the market fee; mirrors ExitMarket._sellToBuyer's rounding. */
+export function netOfMarketFee(price: bigint, feeBps: number | bigint): bigint {
+  return price - (price * BigInt(feeBps)) / 10_000n;
+}
+
+/**
+ * `data` for gateway.transferExitAndCall that sells the exit instantly to `buyer` (e.g. ExitVault).
+ * @param minPayout the least the SELLER must receive, i.e. net of the market fee (see netOfMarketFee)
+ */
 export function encodeSellToBuyer(w: Withdrawal, buyer: Address, minPayout: bigint): Hex {
   return encode(
     Action.SELL_TO_BUYER,

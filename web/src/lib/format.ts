@@ -1,7 +1,9 @@
 import { formatUnits, parseUnits } from "viem";
-import { SECONDS_PER_L1_BLOCK, USDG_DECIMALS } from "./contracts";
 
 export const APP_NAME = "Exit Market";
+export const USDG_DECIMALS = 6;
+/** Rollup deadlines are in L1 blocks; Ethereum targets 12s blocks. */
+export const SECONDS_PER_L1_BLOCK = 12;
 
 export function usdg(amount: bigint | undefined, digits = 2): string {
   if (amount === undefined) return "—";
@@ -36,13 +38,14 @@ export function bps(value: number | bigint): string {
   return `${(Number(value) / 100).toFixed(2)}%`;
 }
 
-/** Human duration for a number of L1 blocks (12s each). */
+/** Human duration for a number of L1 blocks (12s each), rounded up to the minute. */
 export function blocksToDuration(blocks: bigint): string {
   if (blocks <= 0n) return "now";
-  const seconds = Number(blocks) * SECONDS_PER_L1_BLOCK;
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3_600);
-  const minutes = Math.ceil((seconds % 3_600) / 60);
+  // Round once, then split: rounding each unit separately printed "1h 60m" and "23h 60m".
+  const totalMinutes = Math.ceil((Number(blocks) * SECONDS_PER_L1_BLOCK) / 60);
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;

@@ -1,27 +1,24 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
-import { createPublicClient, createWalletClient, defineChain, http, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
-import { XAI_TESTNET } from "./networks.ts";
+import { XAI_TESTNET, xaiTestnet } from "./networks.ts";
 
-export const xaiTestnet = defineChain({
-  id: XAI_TESTNET.chainId,
-  name: XAI_TESTNET.name,
-  nativeCurrency: { name: "sXAI", symbol: "sXAI", decimals: 18 },
-  rpcUrls: { default: { http: [XAI_TESTNET.rpcUrl] } },
-  blockExplorers: { default: { name: "Xai Explorer", url: XAI_TESTNET.explorerUrl } },
-  testnet: true,
-});
+export { xaiTestnet };
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing ${name} in .env (see .env.example)`);
-  return value;
+/** Value of the first of `names` that is set, so a role key can fall back to the deployer's. */
+function requireEnv(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  throw new Error(`Missing ${names.join(" or ")} in .env (see .env.example)`);
 }
 
-export function getClients() {
-  const account = privateKeyToAccount(requireEnv("DEPLOYER_PRIVATE_KEY") as Hex);
+/** @param keyEnv env vars tried in order for the signing key (default: the deployer's). */
+export function getClients(keyEnv: readonly string[] = ["DEPLOYER_PRIVATE_KEY"]) {
+  const account = privateKeyToAccount(requireEnv(...keyEnv) as Hex);
   const parentRpc = process.env.ARB_SEPOLIA_RPC_URL ?? arbitrumSepolia.rpcUrls.default.http[0];
   return {
     account,
@@ -38,6 +35,9 @@ export interface Deployment {
   verifier: Address;
   market: Address;
   vault: Address;
+  router?: Address;
+  /** Arbitrum Sepolia block the deployment starts at; event scans begin here when it is recorded. */
+  deployBlock?: number;
 }
 
 export function loadDeployment(): Deployment {

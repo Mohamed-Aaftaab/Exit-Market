@@ -1,10 +1,14 @@
 // Run: node --test web/src/lib/relayGuard.test.ts
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
+import { getAddress } from "viem";
+import deployment from "../../../deployments/arbitrumSepolia.json" with { type: "json" };
+import { XAI_TESTNET } from "../../../scripts/lib/networks.ts";
 import { MIN_RELAYER_FEE, allowRequest, parseRelayRequest, runExclusive } from "./relayGuard.ts";
 
-const GATEWAY = "0xCcB451C4Df22addCFe1447c58bC6b2f264Bb1256";
-const VAULT = "0x4b1f94e45fF6fC5b3C105806D2Ca4e2BeDe6AfeD";
+// The relayer pins the live gateway and vault, so the test uses the same sources the app does.
+const GATEWAY = XAI_TESTNET.tokenBridge.parentErc20Gateway;
+const VAULT = getAddress(deployment.vault);
 const expect = { gateway: GATEWAY, buyer: VAULT } as const;
 
 function body(overrides: Record<string, unknown> = {}) {

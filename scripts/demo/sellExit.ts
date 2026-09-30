@@ -3,9 +3,10 @@
  * Usage: node scripts/demo/sellExit.ts <xai-withdrawal-tx-hash>
  */
 import { formatUnits, parseAbi, type Hex } from "viem";
+import { exitMarketAbi, exitVaultAbi } from "../lib/abis.ts";
 import { getClients, loadDeployment } from "../lib/clients.ts";
 import { buildExitProof } from "../lib/exitProof.ts";
-import { encodeSellToBuyer, toExitRecord } from "../lib/hookData.ts";
+import { encodeSellToBuyer, netOfMarketFee, toExitRecord } from "../lib/hookData.ts";
 import { XAI_TESTNET } from "../lib/networks.ts";
 
 const gatewayAbi = parseAbi([
@@ -38,10 +39,6 @@ const rollupAbi = [
     ],
   },
 ] as const;
-const vaultAbi = parseAbi([
-  "struct ExitRecord { address gateway; uint256 exitNum; address initialDestination; address l1Token; uint256 amount; uint256 index; bytes32 itemHash; bytes32 sendRoot; uint64 nodeNum; bytes32 blockHash; bool pending; uint64 deadlineBlock; }",
-  "function quote(ExitRecord exit) view returns (uint256)",
-]);
 
 async function main() {
   const withdrawalTx = process.argv[2] as Hex | undefined;
@@ -69,11 +66,15 @@ async function main() {
     args: [w.proof.nodeNum],
   });
   const record = toExitRecord(w, { parent: gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway }, node.deadlineBlock, true);
-  // Quote only rises as the deadline approaches, so today's quote is a safe floor.
-  const minPayout = await parent.readContract({ address: d.vault, abi: vaultAbi, functionName: "quote", args: [record] });
+  // Quote only rises as the deadline approaches, so today's quote is a safe floor; the floor is net of the fee.
+  const [quote, feeBps] = await Promise.all([
+    parent.readContract({ address: d.vault, abi: exitVaultAbi, functionName: "quote", args: [record] }),
+    parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "feeBps" }),
+  ]);
+  const minPayout = netOfMarketFee(quote, feeBps);
 
   console.log(`Exit #${w.exitNum}: ${formatUnits(w.proof.amount, 6)} USDG, proven against pending node ${w.proof.nodeNum}`);
-  console.log(`Vault quote: ${formatUnits(minPayout, 6)} USDG (before market fee)`);
+  console.log(`Vault quote: ${formatUnits(quote, 6)} USDG; you receive at least ${formatUnits(minPayout, 6)} after the market fee`);
 
   const hash = await parentWallet.writeContract({
     address: gateway,

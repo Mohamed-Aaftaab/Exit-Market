@@ -4,7 +4,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { parseEventLogs, type Hex } from "viem";
 import { useAccount, usePublicClient, useSignTypedData, useSwitchChain, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
-import { SELL_ORDER_TYPES, routerDomain } from "@shared/relay.ts";
+import { SELL_ORDER_TYPES, routerDomain, type SellOrder } from "@shared/relay.ts";
 import {
   ARBITRUM_SEPOLIA,
   DEPLOYMENT,
@@ -14,66 +14,93 @@ import {
   childRouterAbi,
   withdrawalInitiatedEvent,
 } from "@/lib/contracts";
+import {
+  applyRelayResponse,
+  mergeRelayed,
+  needsRelay,
+  upsertIntent,
+  type GaslessIntent,
+  type RelayResponse,
+} from "@/lib/intentStore";
 import { xaiTestnet } from "@/lib/wagmi";
 
-const STORAGE_KEY = "exit-market:gasless-intents";
+export type { GaslessIntent } from "@/lib/intentStore";
+
+const STORAGE_KEY = "exit-market:gasless-intents:v2";
 const POLL_MS = 60_000;
 const ORDER_TTL_SECONDS = 24 * 60 * 60;
+const BPS = 10_000n;
 
-/** A signed gasless exit waiting to be settled by the relayer. JSON-safe (bigints as strings). */
-export interface GaslessIntent {
-  withdrawalTx: Hex;
-  amount: string;
-  order: Record<"gateway" | "exitNum" | "buyer" | "minProceeds" | "relayerFee" | "deadline", string>;
-  signature: Hex;
-  status: "waiting" | "settled" | "error";
-  detail?: string;
-  settleTx?: Hex;
-}
+/**
+ * Smallest amount a gasless exit can carry: the seller must still receive something after the 99% floor and the
+ * relayer fee. Checked BEFORE the irreversible withdrawal, so a too-small exit can never strand funds.
+ */
+export const MIN_GASLESS_AMOUNT = ((RELAYER_FEE + 1n) * BPS + GASLESS_MIN_BPS - 1n) / GASLESS_MIN_BPS;
 
-// Tiny external store over localStorage (per-browser convenience; the relay itself is stateless).
+// A small external store over localStorage, shared by every component and kept in sync across tabs.
 const EMPTY: GaslessIntent[] = [];
 let cache: GaslessIntent[] | undefined;
 const listeners = new Set<() => void>();
 
-function load(): GaslessIntent[] {
-  if (cache) return cache;
+function read(): GaslessIntent[] {
   try {
-    cache = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as GaslessIntent[];
+    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? (parsed as GaslessIntent[]) : [];
   } catch {
-    cache = [];
+    return [];
   }
+}
+
+function load(): GaslessIntent[] {
+  cache ??= read();
   return cache;
 }
 
-function save(intents: GaslessIntent[]) {
-  cache = intents;
+/** Applies `change` to the latest stored list (never to a stale snapshot) and notifies subscribers. */
+function update(change: (current: GaslessIntent[]) => GaslessIntent[]) {
+  cache = change(read());
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(intents));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
   } catch {
-    // Storage unavailable (private mode): intents live for this session only.
+    // Storage unavailable (private mode): intents live for this page only.
   }
   listeners.forEach((notify) => notify());
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== STORAGE_KEY) return;
+    cache = undefined; // another tab changed the list
+    listener();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 
 async function relay(intent: GaslessIntent): Promise<GaslessIntent> {
-  const res = await fetch("/api/relay", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ withdrawalTx: intent.withdrawalTx, order: intent.order, signature: intent.signature }),
-  });
-  const json = (await res.json()) as { status: string; txHash?: Hex; reason?: string; error?: string };
-  if (json.status === "settled") return { ...intent, status: "settled", settleTx: json.txHash, detail: undefined };
-  if (json.status === "waiting") return { ...intent, status: "waiting", detail: "Waiting for the next rollup assertion" };
-  return { ...intent, status: "error", detail: json.error ?? "Relay failed" };
+  let response: RelayResponse | undefined;
+  try {
+    const res = await fetch("/api/relay", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ withdrawalTx: intent.withdrawalTx, order: intent.order, signature: intent.signature }),
+    });
+    response = { httpStatus: res.status, body: (await res.json().catch(() => undefined)) as RelayResponse["body"] };
+  } catch {
+    response = undefined; // offline or the function timed out: retried on the next poll
+  }
+  return applyRelayResponse(intent, response, Date.now());
 }
 
-/** Starts gasless exits (withdraw to router + one signature) and keeps polling the relayer until settled. */
+function serialize(order: SellOrder): GaslessIntent["order"] {
+  return Object.fromEntries(Object.entries(order).map(([k, v]) => [k, String(v)])) as GaslessIntent["order"];
+}
+
+/** Starts gasless exits (withdraw to router + one signature) and keeps polling the relayer until each is final. */
 export function useGaslessExit() {
   const { address, chainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
@@ -83,10 +110,10 @@ export function useGaslessExit() {
   const intents = useSyncExternalStore(subscribe, load, () => EMPTY);
 
   const poll = useCallback(async () => {
-    const current = load();
-    if (!current.some((i) => i.status !== "settled")) return;
-    const next = await Promise.all(current.map((i) => (i.status === "settled" ? i : relay(i).catch(() => i))));
-    save(next);
+    const due = load().filter(needsRelay);
+    if (due.length === 0) return;
+    const relayed = await Promise.all(due.map(relay));
+    update((current) => mergeRelayed(current, relayed));
   }, []);
 
   useEffect(() => {
@@ -95,30 +122,17 @@ export function useGaslessExit() {
     return () => clearInterval(id);
   }, [poll]);
 
-  const start = useCallback(
-    async (amount: bigint, onStep: (step: string) => void) => {
+  /** Signs the order for an intent that is already withdrawn to the router (also used to resume a rejected signature). */
+  const sign = useCallback(
+    async (intent: GaslessIntent, onStep: (step: string) => void) => {
       const { router, vault } = DEPLOYMENT;
       if (!router || !vault) throw new Error("Gasless exits not configured");
-      if (!address || !child) throw new Error("Connect a wallet first");
-
-      if (chainId !== xaiTestnet.id) await switchChainAsync({ chainId: xaiTestnet.id });
-      onStep("Confirm the withdrawal on Xai Testnet…");
-      const withdrawalTx = await writeContractAsync({
-        chainId: xaiTestnet.id,
-        address: XAI_TESTNET.tokenBridge.childGatewayRouter,
-        abi: childRouterAbi,
-        functionName: "outboundTransfer",
-        args: [ARBITRUM_SEPOLIA.usdg, router, amount, "0x"],
-      });
-      const receipt = await child.waitForTransactionReceipt({ hash: withdrawalTx, timeout: 120_000 });
-      const [initiated] = parseEventLogs({ abi: [withdrawalInitiatedEvent], logs: receipt.logs });
-      if (!initiated) throw new Error("Withdrawal event not found");
-
-      const order = {
+      const amount = BigInt(intent.amount);
+      const order: SellOrder = {
         gateway: XAI_TESTNET.tokenBridge.parentErc20Gateway,
-        exitNum: initiated.args._exitNum,
+        exitNum: BigInt(intent.exitNum),
         buyer: vault,
-        minProceeds: (amount * GASLESS_MIN_BPS) / 10_000n - RELAYER_FEE,
+        minProceeds: (amount * GASLESS_MIN_BPS) / BPS - RELAYER_FEE,
         relayerFee: RELAYER_FEE,
         deadline: BigInt(Math.floor(Date.now() / 1000) + ORDER_TTL_SECONDS),
       };
@@ -131,20 +145,56 @@ export function useGaslessExit() {
         primaryType: "SellOrder",
         message: order,
       });
-
-      const intent: GaslessIntent = {
-        withdrawalTx,
-        amount: amount.toString(),
-        order: Object.fromEntries(Object.entries(order).map(([k, v]) => [k, String(v)])) as GaslessIntent["order"],
+      const signed: GaslessIntent = {
+        ...intent,
+        order: serialize(order),
         signature,
         status: "waiting",
-        detail: "Waiting for the next rollup assertion",
+        detail: "Waiting for the next rollup node",
+        updatedAt: Date.now(),
       };
-      save([intent, ...load()]);
-      return withdrawalTx;
+      update((current) => upsertIntent(current, signed));
+      void poll();
     },
-    [address, chainId, child, signTypedDataAsync, switchChainAsync, writeContractAsync],
+    [poll, signTypedDataAsync, switchChainAsync],
   );
 
-  return { intents, start, refresh: poll };
+  const start = useCallback(
+    async (amount: bigint, onStep: (step: string) => void) => {
+      const { router, vault } = DEPLOYMENT;
+      if (!router || !vault) throw new Error("Gasless exits not configured");
+      if (!address || !child) throw new Error("Connect a wallet first");
+      if (amount < MIN_GASLESS_AMOUNT) throw new Error("Amount too small for a fast exit after the relayer fee");
+
+      if (chainId !== xaiTestnet.id) await switchChainAsync({ chainId: xaiTestnet.id });
+      onStep("Confirm the withdrawal on Xai Testnet…");
+      const withdrawalTx: Hex = await writeContractAsync({
+        chainId: xaiTestnet.id,
+        address: XAI_TESTNET.tokenBridge.childGatewayRouter,
+        abi: childRouterAbi,
+        functionName: "outboundTransfer",
+        args: [ARBITRUM_SEPOLIA.usdg, router, amount, "0x"],
+      });
+      const receipt = await child.waitForTransactionReceipt({ hash: withdrawalTx, timeout: 120_000 });
+      if (receipt.status !== "success") throw new Error("The withdrawal reverted on Xai Testnet");
+      const [initiated] = parseEventLogs({ abi: [withdrawalInitiatedEvent], logs: receipt.logs });
+      if (!initiated) throw new Error("Withdrawal event not found");
+
+      // Persist before asking for the signature: if it is rejected, the exit is not lost and can be signed later.
+      const unsigned: GaslessIntent = {
+        withdrawalTx,
+        amount: amount.toString(),
+        exitNum: initiated.args._exitNum.toString(),
+        status: "unsigned",
+        detail: "Withdrawn to the router; sign the order to sell it",
+        updatedAt: Date.now(),
+      };
+      update((current) => upsertIntent(current, unsigned));
+      await sign(unsigned, onStep);
+      return withdrawalTx;
+    },
+    [address, chainId, child, sign, switchChainAsync, writeContractAsync],
+  );
+
+  return { intents, start, sign, refresh: poll };
 }

@@ -1,4 +1,4 @@
-import { getAddress, type Address } from "viem";
+import { defineChain, getAddress, type Address } from "viem";
 
 /**
  * Xai Testnet (Orbit L3, custom gas token sXAI) settling to Arbitrum Sepolia.
@@ -37,6 +37,16 @@ export const XAI_TESTNET = {
     childWethGateway: "0x0000000000000000000000000000000000000000" as Address,
   },
 } as const;
+
+/** viem chain for Xai Testnet: the one definition shared by scripts and the web app's wagmi config. */
+export const xaiTestnet = defineChain({
+  id: XAI_TESTNET.chainId,
+  name: XAI_TESTNET.name,
+  nativeCurrency: { name: "sXAI", symbol: "sXAI", decimals: 18 },
+  rpcUrls: { default: { http: [XAI_TESTNET.rpcUrl] } },
+  blockExplorers: { default: { name: "Xai Explorer", url: XAI_TESTNET.explorerUrl } },
+  testnet: true,
+});
 
 export const ARBITRUM_SEPOLIA = {
   chainId: 421614,

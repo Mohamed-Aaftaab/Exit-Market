@@ -1,10 +1,11 @@
 import { getAddress, parseAbi, type Address } from "viem";
+import { exitMarketAbi, exitVaultAbi } from "@shared/abis.ts";
 import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "@shared/networks.ts";
+import deploymentFile from "../../../deployments/arbitrumSepolia.json";
 
 export { ARBITRUM_SEPOLIA, XAI_TESTNET };
 
-/** A malformed env value must not white-screen the app: treat it as "not configured". */
-function envAddress(value: string | undefined): Address | undefined {
+function parseAddress(value: string | undefined): Address | undefined {
   if (!value) return undefined;
   try {
     return getAddress(value);
@@ -13,41 +14,29 @@ function envAddress(value: string | undefined): Address | undefined {
   }
 }
 
-/** Filled after `npx hardhat run scripts/deploy.ts --network arbitrumSepolia` (see web/.env.example). */
+/** Env wins; unset (or malformed, which must not white-screen the app) falls back to the deployment file. */
+function pickAddress(name: string, envValue: string | undefined, fileValue: string | undefined): Address | undefined {
+  const fromEnv = parseAddress(envValue);
+  if (envValue && !fromEnv) console.warn(`Ignoring malformed ${name}=${envValue}; using deployments/arbitrumSepolia.json`);
+  return fromEnv ?? parseAddress(fileValue);
+}
+
+const FILE: { market?: string; vault?: string; router?: string } = deploymentFile;
+
+/**
+ * Live contracts: deployments/arbitrumSepolia.json (written by the deploy scripts), so a fresh clone runs with no
+ * config. NEXT_PUBLIC_* overrides point a build at other contracts (see web/.env.example). Each process.env access
+ * stays literal so Next inlines it into the client bundle.
+ */
 export const DEPLOYMENT = {
-  market: envAddress(process.env.NEXT_PUBLIC_EXIT_MARKET),
-  vault: envAddress(process.env.NEXT_PUBLIC_EXIT_VAULT),
-  router: envAddress(process.env.NEXT_PUBLIC_EXIT_INTENT_ROUTER),
+  market: pickAddress("NEXT_PUBLIC_EXIT_MARKET", process.env.NEXT_PUBLIC_EXIT_MARKET, FILE.market),
+  vault: pickAddress("NEXT_PUBLIC_EXIT_VAULT", process.env.NEXT_PUBLIC_EXIT_VAULT, FILE.vault),
+  router: pickAddress("NEXT_PUBLIC_EXIT_INTENT_ROUTER", process.env.NEXT_PUBLIC_EXIT_INTENT_ROUTER, FILE.router),
 } as const;
 
-export const USDG_DECIMALS = 6;
-/** Rollup deadlines are in L1 blocks; Ethereum targets 12s blocks. */
-export const SECONDS_PER_L1_BLOCK = 12;
-
-export const EXIT_RECORD =
-  "struct ExitRecord { address gateway; uint256 exitNum; address initialDestination; address l1Token; uint256 amount; uint256 index; bytes32 itemHash; bytes32 sendRoot; uint64 nodeNum; bytes32 blockHash; bool pending; uint64 deadlineBlock; }";
-
-export const vaultAbi = parseAbi([
-  EXIT_RECORD,
-  "function quote(ExitRecord exit) view returns (uint256)",
-  "function totalAssets() view returns (uint256)",
-  "function idleAssets() view returns (uint256)",
-  "function outstandingCost() view returns (uint256)",
-  "function baseFeeBps() view returns (uint16)",
-  "function aprBps() view returns (uint16)",
-  "function SHARE_LOCK() view returns (uint256)",
-  "function balanceOf(address) view returns (uint256)",
-  "function convertToAssets(uint256 shares) view returns (uint256)",
-  "function maxWithdraw(address owner) view returns (uint256)",
-  "function deposit(uint256 assets, address receiver) returns (uint256)",
-  "function withdraw(uint256 assets, address receiver, address owner) returns (uint256)",
-]);
-
-export const marketAbi = parseAbi([
-  "function feeBps() view returns (uint16)",
-  "event ExitSoldToBuyer(bytes32 indexed id, address indexed seller, address indexed buyer, uint256 price, uint256 fee)",
-  "event ExitListed(bytes32 indexed id, address indexed seller, address indexed l1Token, uint256 amount, uint256 price, uint64 expiry, bool pending)",
-]);
+/** ABIs generated from the compiled contracts (scripts/dev/exportAbis.ts). */
+export const vaultAbi = exitVaultAbi;
+export const marketAbi = exitMarketAbi;
 
 export const erc20Abi = parseAbi([
   "function balanceOf(address) view returns (uint256)",

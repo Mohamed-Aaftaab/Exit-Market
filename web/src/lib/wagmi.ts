@@ -1,23 +1,16 @@
 import { createConfig, http } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { arbitrumSepolia } from "wagmi/chains";
-import { defineChain } from "viem";
+import { ARBITRUM_SEPOLIA, XAI_TESTNET, xaiTestnet } from "@shared/networks.ts";
 
-export const xaiTestnet = defineChain({
-  id: 37714555429,
-  name: "Xai Testnet",
-  nativeCurrency: { name: "sXAI", symbol: "sXAI", decimals: 18 },
-  rpcUrls: { default: { http: ["https://testnet-v2.xai-chain.net/rpc"] } },
-  blockExplorers: { default: { name: "Xai Explorer", url: "https://testnet-explorer-v2.xai-chain.net" } },
-  testnet: true,
-});
+export { xaiTestnet };
 
 export const wagmiConfig = createConfig({
   chains: [arbitrumSepolia, xaiTestnet],
   connectors: [injected()],
   transports: {
-    [arbitrumSepolia.id]: http("https://sepolia-rollup.arbitrum.io/rpc"),
-    [xaiTestnet.id]: http("https://testnet-v2.xai-chain.net/rpc"),
+    [arbitrumSepolia.id]: http(ARBITRUM_SEPOLIA.rpcUrl),
+    [xaiTestnet.id]: http(XAI_TESTNET.rpcUrl),
   },
   ssr: true,
 });

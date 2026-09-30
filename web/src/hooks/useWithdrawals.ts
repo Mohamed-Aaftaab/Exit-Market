@@ -5,6 +5,8 @@ import { usePublicClient } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import type { Address, Hash, PublicClient } from "viem";
 import { findLatestNode, type AssertedNode } from "@shared/exitProof.ts";
+import { getLogsChunked } from "@shared/logScan.ts";
+import { XAI_GATEWAY_START_BLOCK, XAI_LOG_CHUNK } from "@/lib/explorer/constants";
 import {
   ARBITRUM_SEPOLIA,
   DEPLOYMENT,
@@ -47,14 +49,22 @@ function statusOf(user: Address, owner: Address, spent: boolean, asserted: boole
 }
 
 async function loadWithdrawals(parent: PublicClient, child: PublicClient, user: Address): Promise<WithdrawalsData> {
-  const [logs, latestNode] = await Promise.all([
-    child.getLogs({
-      address: XAI_TESTNET.tokenBridge.childErc20Gateway,
-      event: withdrawalInitiatedEvent,
-      args: { _from: user },
-      fromBlock: 0n,
-      toBlock: "latest",
-    }),
+  const head = await child.getBlockNumber();
+  const [{ logs }, latestNode] = await Promise.all([
+    // Bounded chunks from the gateway's deployment block (bisected if the RPC refuses a range).
+    getLogsChunked(
+      (fromBlock, toBlock) =>
+        child.getLogs({
+          address: XAI_TESTNET.tokenBridge.childErc20Gateway,
+          event: withdrawalInitiatedEvent,
+          args: { _from: user },
+          fromBlock,
+          toBlock,
+        }),
+      XAI_GATEWAY_START_BLOCK,
+      head,
+      XAI_LOG_CHUNK,
+    ),
     findLatestNode(parent, child, XAI_TESTNET.ethBridge.rollup),
   ]);
 

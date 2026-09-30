@@ -11,7 +11,10 @@
     "test:sol": "hardhat test solidity",
     "web:dev": "npm run dev -w web",
     "web:build": "npm run build -w web",
-    "test:fork": "FORK_TESTS=1 hardhat test solidity"
+    "test:fork": "FORK_TESTS=1 hardhat test solidity",
+    "test:web": "node --test \"web/src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "abis": "hardhat build && node scripts/dev/exportAbis.ts"
   },
   "devDependencies": {
     "@arbitrum/sdk": "^4.1.0",

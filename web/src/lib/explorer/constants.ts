@@ -16,7 +16,7 @@ export const XAI_GATEWAY_START_BLOCK = 3_115n;
 export const PARENT_REDIRECT_START_BLOCK = 1_653_340n;
 
 /** getLogs spans. Both public RPCs answered full-range, address-filtered queries in <300ms on 2026-09-29;
- *  chunks keep each request bounded as the chains grow, and failed chunks are bisected (see logScan.ts). */
+ *  chunks keep each request bounded as the chains grow, and failed chunks are bisected (see scripts/lib/logScan.ts). */
 export const XAI_LOG_CHUNK = 5_000_000n;
 export const PARENT_LOG_CHUNK = 100_000_000n;
 
@@ -45,17 +45,23 @@ function safeAddress(value: string | undefined): Address | undefined {
   }
 }
 
-/** Exit Market contracts on Arbitrum Sepolia, from deployments/arbitrumSepolia.json. */
-export const OUR_CONTRACTS: ReadonlyArray<{ kind: OurContract; address: Address }> = (
-  [
-    ["market", deployment.market],
-    ["vault", deployment.vault],
-    ["router", deployment.router],
-  ] as const
-).flatMap(([kind, value]) => {
-  const address = safeAddress(value);
-  return address ? [{ kind, address }] : [];
-});
+type ContractSet = { market?: string; vault?: string; router?: string };
+
+const KINDS: readonly OurContract[] = ["market", "vault", "router"];
+
+/**
+ * Exit Market contracts on Arbitrum Sepolia, from deployments/arbitrumSepolia.json: the live set plus every earlier
+ * version under `history`, so exits bought by a superseded vault or router are still labelled as ours.
+ */
+export const OUR_CONTRACTS: ReadonlyArray<{ kind: OurContract; address: Address }> = [
+  deployment as ContractSet,
+  ...Object.values((deployment as { history?: Record<string, ContractSet> }).history ?? {}),
+].flatMap((set) =>
+  KINDS.flatMap((kind) => {
+    const address = safeAddress(set[kind]);
+    return address ? [{ kind, address }] : [];
+  }),
+);
 
 /** Which of our contracts (if any) is `address`. */
 export function ourContract(address: Address | undefined): OurContract | undefined {

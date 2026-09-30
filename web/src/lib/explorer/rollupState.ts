@@ -1,8 +1,8 @@
 import type { Hex, PublicClient } from "viem";
 import { NODE_CREATED } from "@shared/exitProof.ts";
+import { getLogsChunked } from "@shared/logScan.ts";
 import { XAI_TESTNET, rollupAbi } from "@/lib/contracts";
 import { MAX_PENDING_NODES, NODE_LOOKBACK } from "./constants";
-import { getLogsChunked } from "./logScan";
 
 export interface RollupNode {
   nodeNum: bigint;

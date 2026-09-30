@@ -2,10 +2,35 @@
 
 import { useState } from "react";
 import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
-import { useGaslessExit } from "@/hooks/useGaslessExit";
+import { useGaslessExit, type GaslessIntent } from "@/hooks/useGaslessExit";
 import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, childRouterAbi } from "@/lib/contracts";
 import { errorText, parseUsdgInput, usdg } from "@/lib/format";
 import { xaiTestnet } from "@/lib/wagmi";
+
+/** One gasless exit's state: a receipt link, a "sign" action, or the relayer's latest word. */
+function IntentState({ intent, onSign, isBusy }: { intent: GaslessIntent; onSign: () => void; isBusy: boolean }) {
+  if (intent.status === "settled" && intent.settleTx) {
+    return (
+      <a className="text-ok underline" href={`https://sepolia.arbiscan.io/tx/${intent.settleTx}`} target="_blank" rel="noopener noreferrer">
+        settled ↗
+      </a>
+    );
+  }
+  if (intent.status === "unsigned") {
+    return (
+      <button type="button" className="text-warn underline disabled:opacity-50" onClick={onSign} disabled={isBusy}>
+        sign order
+      </button>
+    );
+  }
+  if (intent.status === "done-elsewhere") return <span className="text-muted">settled elsewhere</span>;
+  if (intent.status === "failed") return <span className="text-bad">{intent.detail}</span>;
+  return (
+    <span className="text-warn" title={intent.detail}>
+      settling…
+    </span>
+  );
+}
 
 /**
  * Starts a USDG withdrawal on Xai Testnet. Fast exit (default): withdraw to the intent router and sign one
@@ -35,8 +60,22 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
       functionName: "outboundTransfer",
       args: [ARBITRUM_SEPOLIA.usdg, address, value, "0x"],
     });
-    await child.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    const receipt = await child.waitForTransactionReceipt({ hash, timeout: 120_000 });
+    if (receipt.status !== "success") throw new Error("The withdrawal reverted on Xai Testnet");
     setStatus("Withdrawal started. It becomes sellable after the next rollup assertion (~15 min).");
+  }
+
+  async function signLater(intent: GaslessIntent) {
+    if (isBusy) return;
+    setIsBusy(true);
+    try {
+      await gasless.sign(intent, setStatus);
+      setStatus("Signed. The relayer sells it to the vault as soon as it is asserted (~15 min).");
+    } catch (err) {
+      setStatus(errorText(err));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function submit() {
@@ -108,21 +147,10 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
         <ul className="space-y-1 text-xs" aria-label="Gasless exits">
           {gasless.intents.slice(0, 5).map((i) => (
             <li key={i.withdrawalTx} className="flex items-center justify-between gap-3 font-mono">
-              <span className="text-ink">{usdg(BigInt(i.amount))} USDG · exit #{i.order.exitNum}</span>
-              {i.status === "settled" && i.settleTx ? (
-                <a
-                  className="text-ok underline"
-                  href={`https://sepolia.arbiscan.io/tx/${i.settleTx}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  settled ↗
-                </a>
-              ) : (
-                <span className={i.status === "error" ? "text-bad" : "text-warn"} title={i.detail}>
-                  {i.status === "error" ? i.detail : "settling…"}
-                </span>
-              )}
+              <span className="text-ink">
+                {usdg(BigInt(i.amount))} USDG · exit #{i.exitNum}
+              </span>
+              <IntentState intent={i} onSign={() => void signLater(i)} isBusy={isBusy} />
             </li>
           ))}
         </ul>

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Contracts: unit, fuzz, invariant and regression tests (fork tests need RPC access and run with FORK_TESTS=1).
+      - run: npx hardhat test solidity
+      # The committed ABI module must match what the contracts compile to.
+      - run: node scripts/dev/exportAbis.ts && git diff --exit-code scripts/lib/abis.ts
+      - run: npm run typecheck
+      - run: npm run test:web
+      - run: npm run lint -w web
+      # The app builds with no configuration: addresses come from deployments/arbitrumSepolia.json.
+      - run: npm run build -w web

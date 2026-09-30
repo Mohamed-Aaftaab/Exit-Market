@@ -1,4 +1,5 @@
 import { parseAbi, parseAbiItem, type Address, type PublicClient } from "viem";
+import { getLogsChunked } from "@shared/logScan.ts";
 import { XAI_TESTNET, outboxAbi, parentGatewayAbi, withdrawalInitiatedEvent } from "@/lib/contracts";
 import {
   PARENT_LOG_CHUNK,
@@ -7,7 +8,6 @@ import {
   XAI_LOG_CHUNK,
   ourContract,
 } from "./constants";
-import { getLogsChunked } from "./logScan";
 import { loadRollupState, type RollupState } from "./rollupState";
 import { stageOf, statusOf, type ExitToken, type ExplorerExit, type Redirect } from "./status";
 
