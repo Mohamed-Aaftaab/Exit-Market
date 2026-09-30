@@ -111,6 +111,7 @@ Current contracts (**v3**, after the round-5 review):
 | Exit #13: gasless, withdrawn to router v3 by a fresh wallet with **0 ETH** on Arbitrum Sepolia | [`0xa84c81e6…22f5`](https://testnet-explorer-v2.xai-chain.net/tx/0xa84c81e625b4188ddedb26079bc0ab236b06855e6da2de40367d957320c322f5) |
 | Settled by the live site's relayer on Vercel; the seller received 4.96 USDG and still holds 0 ETH | [`0x7a9d6168…658f`](https://sepolia.arbiscan.io/tx/0x7a9d6168e9bc171af415495716e600f50c91df6a0bd85e8bdcaf8ce3cfb1658f) |
 | After the window, the permissionless keeper executed exit #12 through the Outbox and vault v3 collected face value | [`0x4c7ef727…210b`](https://sepolia.arbiscan.io/tx/0x4c7ef727880843fc6a15c741fda4e5fff862b38a23e95c94eabf0426ef0a210b) · [`0xb9dee047…4c49`](https://sepolia.arbiscan.io/tx/0xb9dee04770a939b0779592e0a99192f84a017ea4d480c193c782b60f8bb84c49) |
+| Same for the gasless exit #13: executed and collected, closing both v3 exits | [`0x61a77afb…ba84`](https://sepolia.arbiscan.io/tx/0x61a77afb157fb6fa7e581c1b083bb7782612d4bb0a72db62375f948d8dadba84) · [`0x168967a6…2dc5`](https://sepolia.arbiscan.io/tx/0x168967a62050731e3740a2fe6f91fb4e1e8d5f1c0fda18763770054840d22dc5) |
 
 Earlier contracts (v1, v2), same flow, all executed and collected by the keeper:
 
