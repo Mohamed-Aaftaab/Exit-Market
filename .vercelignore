@@ -1,0 +1,22 @@
+# Vercel uploads only what the web app builds from. This file replaces .gitignore for the upload, so it is an
+# allowlist: everything is ignored, then the app and the few files it imports from outside web/ are let back in.
+/*
+!/web
+!/scripts
+!/deployments
+!/package.json
+!/package-lock.json
+
+# scripts: only the shared library the app imports as @shared/*
+/scripts/*
+!/scripts/lib
+
+# never upload env files, local state or build output
+.env
+.env.*
+**/.env
+**/.env.*
+/deployments/*.local.json
+/web/.next
+/web/.vercel
+node_modules

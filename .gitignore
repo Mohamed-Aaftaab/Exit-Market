@@ -13,3 +13,6 @@ stylus/*/target/
 video/out/
 .claude/worktrees/
 __pycache__/
+
+.vercel
+.env*

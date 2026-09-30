@@ -2,6 +2,9 @@
 
 Recheck each post's length in the X composer. Handles: @arbitrum, @OffchainLabs, @HackQuest_.
 
+Links to fill in: live app https://exit-market-gamma.vercel.app (desk `/app`, Explorer `/explorer`, deck `/pitch`);
+the repo and demo video links once they exist.
+
 ## X thread
 
 **1** (attach the demo video)

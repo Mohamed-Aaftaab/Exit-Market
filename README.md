@@ -7,7 +7,9 @@ years ago that had never been used on mainnet.
 Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain · BOLD verifier proven on an
 **Arbitrum One mainnet fork** · proof core also in **Stylus** (Rust)
 
-[Demo video](#) · [Live app](#) · [Exit Explorer](#) · [Pitch deck](#) — links added at submission
+[Live app](https://exit-market-gamma.vercel.app) · [Desk](https://exit-market-gamma.vercel.app/app) ·
+[Exit Explorer](https://exit-market-gamma.vercel.app/explorer) · [Pitch deck](https://exit-market-gamma.vercel.app/pitch) ·
+Demo video: link added at submission
 
 ---
 
