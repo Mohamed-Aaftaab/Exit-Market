@@ -9,16 +9,17 @@ import {BoldFixture} from "./utils/BoldFixture.sol";
 contract BoldRootVerifierRejectionTest is BoldFixture {
     // ================================================================ rejected-root behavior
 
-    /// @dev Documents current behavior: a re-commit of a root whose earlier assertion lost is refused while it is
-    ///      pending (rejectedRoots is keyed by sendRoot, not by assertion), and accepted once confirmed.
-    function test_verifyRoot_pendingReCommitOfRejectedRootIsRefusedUntilConfirmed() public {
+    /// @dev Since re-audit M1, validity comes from the ancestor walk alone: a root whose earlier assertion lost is
+    ///      accepted again when an honest, unchallenged assertion re-commits it (same send root = same Outbox tree).
+    function test_verifyRoot_pendingReCommitOfRejectedRootIsAcceptedOnACleanChain() public {
         (Posted memory lost, Posted memory winner) = _losingSiblingSetup();
         verifier.markRejected(address(rollup), lost.hash, lost.hash, winner.hash);
         // The honest chain re-commits ROOT_A on top of the winner (fresh, unchallenged parent).
         Posted memory recommit = _post(winner.hash, ROOT_A, 3);
         _register(recommit);
 
-        _assertVerdict(ROOT_A, recommit.hash, false, true, 0);
+        _assertVerdict(ROOT_A, recommit.hash, true, true, uint64(block.number) + CONFIRM_PERIOD);
+        _assertVerdict(ROOT_A, lost.hash, false, true, 0); // the losing assertion itself stays invalid
 
         rollup.confirmAssertion(recommit.hash);
         _assertVerdict(ROOT_A, recommit.hash, true, false, 0);

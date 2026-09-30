@@ -33,10 +33,14 @@ contract ExitIntentRouter is IExitIntentRouter, EIP712, ReentrancyGuard {
     /// @notice Items whose executed tokens were already forwarded by recoverExecuted.
     mapping(bytes32 itemHash => bool) public recovered;
     IERC20 private immutable _paymentToken;
+    address private immutable _buyer;
 
-    constructor(address market_) EIP712("ExitIntentRouter", "1") {
+    /// @param buyer_ the only IExitBuyer orders may name (the ExitVault): trusted code inside settle()'s window
+    constructor(address market_, address buyer_) EIP712("ExitIntentRouter", "1") {
+        if (buyer_ == address(0)) revert ZeroAddress();
         _market = IExitMarket(market_);
         _paymentToken = IERC20(IExitMarket(market_).paymentToken());
+        _buyer = buyer_;
     }
 
     /// @inheritdoc IExitIntentRouter
@@ -47,6 +51,11 @@ contract ExitIntentRouter is IExitIntentRouter, EIP712, ReentrancyGuard {
     {
         if (claim.initialDestination != address(this)) revert NotRouterExit();
         if (block.timestamp > order.deadline) revert OrderExpired(order.deadline);
+        // The proceeds are a balance delta, so only trusted code may run between the two balance reads: the
+        // market-allowed (real Arbitrum) gateway, the market and the bound buyer. Otherwise a hostile gateway or
+        // buyer could execute another user's router-owned exit mid-call and have it paid out as proceeds (C1).
+        if (order.buyer != _buyer) revert BuyerNotAllowed(order.buyer);
+        if (!_market.getGatewayConfig(order.gateway).allowed) revert GatewayNotAllowed(order.gateway);
 
         address seller = claim.from;
         (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(orderDigest(order), signature);
@@ -81,6 +90,8 @@ contract ExitIntentRouter is IExitIntentRouter, EIP712, ReentrancyGuard {
         IExitMarket.GatewayConfig memory cfg = _knownGateway(gateway);
 
         _requireProven(cfg, gateway, exitNum, claim);
+        // Already executed: the tokens are in the router, and redirecting now would strand them (H1).
+        if (IOutbox(cfg.outbox).isSpent(claim.index)) revert ExitAlreadySpent(claim.index);
 
         IL1ArbitrumExtendedGateway(gateway).transferExitAndCall(exitNum, address(this), claim.from, "", "");
         emit ExitReclaimed(ExitKeys.id(gateway, exitNum, address(this)), claim.from);
@@ -131,6 +142,11 @@ contract ExitIntentRouter is IExitIntentRouter, EIP712, ReentrancyGuard {
     /// @inheritdoc IExitIntentRouter
     function market() external view returns (address) {
         return address(_market);
+    }
+
+    /// @inheritdoc IExitIntentRouter
+    function buyer() external view returns (address) {
+        return _buyer;
     }
 
     /// @inheritdoc IExitIntentRouter

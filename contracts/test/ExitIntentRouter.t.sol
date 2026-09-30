@@ -54,10 +54,15 @@ contract ExitIntentRouterTest is IntentFixture {
 
     function test_constructor_revertsWhenMarketIsNotAMarket() public {
         vm.expectRevert();
-        new ExitIntentRouter(address(0));
+        new ExitIntentRouter(address(0), address(vault));
 
         vm.expectRevert();
-        new ExitIntentRouter(stranger);
+        new ExitIntentRouter(stranger, address(vault));
+    }
+
+    function test_constructor_revertsOnZeroBuyer() public {
+        vm.expectRevert(IExitIntentRouter.ZeroAddress.selector);
+        new ExitIntentRouter(address(market), address(0));
     }
 
     function test_eip712Domain_isExitIntentRouterVersion1OnThisChain() public view {
@@ -78,7 +83,7 @@ contract ExitIntentRouterTest is IntentFixture {
     }
 
     function test_orderDigest_differsPerRouterAndPerField() public {
-        ExitIntentRouter other = new ExitIntentRouter(address(market));
+        ExitIntentRouter other = new ExitIntentRouter(address(market), address(vault));
         IExitIntentRouter.SellOrder memory o =
             IExitIntentRouter.SellOrder(address(gateway), 7, address(vault), 123e6, 4e6, 1_800_000_000);
         IExitIntentRouter.SellOrder memory o2 = _clone(o);
@@ -220,13 +225,17 @@ contract ExitIntentRouterTest is IntentFixture {
         _expectBadSignature(ws[0], o, _sign(USER2_PK, address(router), o));
     }
 
-    function test_settle_revertsBadSignatureWhenBuyerChangedAfterSigning() public {
+    /// @dev Only the bound buyer is ever accepted, so a tampered buyer is rejected before the signature check.
+    function test_settle_rejectsATamperedBuyerOutright() public {
         Withdrawal[] memory ws = _intents(1);
         IExitIntentRouter.SellOrder memory signed = _order(ws[0], 0, RELAYER_FEE);
         IExitIntentRouter.SellOrder memory tampered = _clone(signed);
         tampered.buyer = attacker;
+        bytes memory sig = _signed(signed);
 
-        _expectBadSignature(ws[0], tampered, _signed(signed));
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.BuyerNotAllowed.selector, attacker));
+        _settleAs(relayer, ws[0], tampered, sig);
+        assertEq(_ownerOf(ws[0]), address(router));
     }
 
     function test_settle_revertsBadSignatureWhenMinProceedsChangedAfterSigning() public {
@@ -265,17 +274,20 @@ contract ExitIntentRouterTest is IntentFixture {
         _expectBadSignature(ws[0], tampered, _signed(signed));
     }
 
-    function test_settle_revertsBadSignatureWhenGatewayChangedAfterSigning() public {
+    /// @dev Only market-allowed gateways are accepted, so an unknown gateway is rejected before the signature check.
+    function test_settle_rejectsATamperedGatewayOutright() public {
         Withdrawal[] memory ws = _intents(1);
         IExitIntentRouter.SellOrder memory signed = _order(ws[0], 0, RELAYER_FEE);
         IExitIntentRouter.SellOrder memory tampered = _clone(signed);
         tampered.gateway = makeAddr("otherGateway");
+        bytes memory sig = _signed(signed);
 
-        _expectBadSignature(ws[0], tampered, _signed(signed));
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.GatewayNotAllowed.selector, tampered.gateway));
+        _settleAs(relayer, ws[0], tampered, sig);
     }
 
     function test_settle_revertsBadSignatureWhenSignedForAnotherRouter() public {
-        ExitIntentRouter routerB = new ExitIntentRouter(address(market));
+        ExitIntentRouter routerB = new ExitIntentRouter(address(market), address(vault));
         Withdrawal[] memory ws = _createFrom(gateway, NODE, 1, 1, user, address(routerB), AMOUNT);
         IExitIntentRouter.SellOrder memory o = _order(ws[0], 0, RELAYER_FEE);
         bytes memory sigForA = _sign(USER_PK, address(router), o);
@@ -464,27 +476,24 @@ contract ExitIntentRouterTest is IntentFixture {
 
     function test_settle_revertsWhenBuyerPaysLessThanRelayerFee() public {
         Withdrawal[] memory ws = _intents(1);
-        uint256 pay = 10e6;
-        TestBuyer stingy = new TestBuyer(IERC20(address(usdg)), pay);
-        usdg.mint(address(stingy), pay);
-        IExitIntentRouter.SellOrder memory o = _orderTo(ws[0], address(stingy), 0, RELAYER_FEE);
+        uint256 received = _received(ws[0]);
+        uint256 greedyFee = received + 1; // the vault's payment cannot even cover the relayer
+        IExitIntentRouter.SellOrder memory o = _order(ws[0], 0, greedyFee);
         bytes memory sig = _signed(o);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IExitIntentRouter.ProceedsBelowMin.selector, pay - _fee(pay), RELAYER_FEE)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.ProceedsBelowMin.selector, received, greedyFee));
         _settleAs(relayer, ws[0], o, sig);
 
         assertEq(_ownerOf(ws[0]), address(router));
     }
 
-    function test_settle_revertsZeroPriceWhenBuyerPaysNothing() public {
+    function test_settle_rejectsAnUntrustedZeroPayingBuyer() public {
         Withdrawal[] memory ws = _intents(1);
         TestBuyer freeloader = new TestBuyer(IERC20(address(usdg)), 0);
         IExitIntentRouter.SellOrder memory o = _orderTo(ws[0], address(freeloader), 0, 0);
         bytes memory sig = _signed(o);
 
-        vm.expectRevert(IExitMarket.ZeroPrice.selector);
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.BuyerNotAllowed.selector, address(freeloader)));
         _settleAs(relayer, ws[0], o, sig);
     }
 
@@ -577,7 +586,9 @@ contract ExitIntentRouterTest is IntentFixture {
 
     // ================================================================ settle: reentrancy
 
-    function test_settle_blocksMaliciousBuyerFromReenteringSettle() public {
+    /// @dev Since re-audit C1 no attacker code can run inside settle(): a re-entrant buyer or gateway is refused
+    ///      before any external call (the nonReentrant guard stays as defence in depth).
+    function test_settle_refusesAReentrantBuyerBeforeAnyExternalCall() public {
         Withdrawal[] memory ws = _intents(2);
         uint256 pay = 9_000e6;
         TestBuyer evil = new TestBuyer(IERC20(address(usdg)), pay);
@@ -587,33 +598,17 @@ contract ExitIntentRouterTest is IntentFixture {
         evil.setReentry(
             address(router), abi.encodeCall(IExitIntentRouter.settle, (ws[1].claim, second, _signed(second))), true
         );
-
-        _settleSigned(ws[0], first);
-
-        assertTrue(evil.reentered(), "buyer tried to re-enter");
-        assertTrue(evil.reentryBlocked(), "re-entry was rejected");
-        assertEq(evil.reentryError(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
-        assertEq(_ownerOf(ws[0]), address(evil));
-        assertEq(_ownerOf(ws[1]), address(router), "nested order untouched");
-        assertEq(usdg.balanceOf(address(router)), 0);
-    }
-
-    function test_settle_revertsWhenMaliciousBuyerReenterAndPropagatesFailure() public {
-        Withdrawal[] memory ws = _intents(2);
-        TestBuyer evil = new TestBuyer(IERC20(address(usdg)), 9_000e6);
-        usdg.mint(address(evil), 9_000e6);
-        IExitIntentRouter.SellOrder memory first = _orderTo(ws[0], address(evil), 0, RELAYER_FEE);
-        IExitIntentRouter.SellOrder memory second = _orderTo(ws[1], address(evil), 0, RELAYER_FEE);
-        evil.setReentry(
-            address(router), abi.encodeCall(IExitIntentRouter.settle, (ws[1].claim, second, _signed(second))), false
-        );
         bytes memory sig = _signed(first);
 
-        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.BuyerNotAllowed.selector, address(evil)));
         _settleAs(relayer, ws[0], first, sig);
+
+        assertFalse(evil.reentered(), "buyer never ran");
+        assertEq(_ownerOf(ws[0]), address(router));
+        assertEq(_ownerOf(ws[1]), address(router));
     }
 
-    function test_settle_isNonReentrantAgainstHostileGatewayNamedInTheOrder() public {
+    function test_settle_refusesAHostileGatewayBeforeAnyExternalCall() public {
         uint256 payment = 1_000e6;
         ReentrantGateway evilGw = new ReentrantGateway(IERC20(address(usdg)), address(router), payment);
         usdg.mint(address(evilGw), payment);
@@ -623,13 +618,10 @@ contract ExitIntentRouterTest is IntentFixture {
         bytes memory sig = _signed(o);
         evilGw.arm(abi.encodeCall(IExitIntentRouter.settle, (ws[0].claim, o, sig)));
 
-        uint256 proceeds = _settleAs(relayer, ws[0], o, sig);
+        vm.expectRevert(abi.encodeWithSelector(IExitIntentRouter.GatewayNotAllowed.selector, address(evilGw)));
+        _settleAs(relayer, ws[0], o, sig);
 
-        assertTrue(evilGw.attempted());
-        assertFalse(evilGw.reentrySucceeded(), "router's own guard rejected the nested settle");
-        assertEq(evilGw.reentryError(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
-        assertEq(proceeds, payment);
-        assertEq(usdg.balanceOf(user), payment);
+        assertFalse(evilGw.attempted(), "gateway never ran");
         assertEq(usdg.balanceOf(address(router)), 0);
     }
 

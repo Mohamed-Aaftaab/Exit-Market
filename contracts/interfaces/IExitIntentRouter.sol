@@ -43,14 +43,21 @@ interface IExitIntentRouter {
     error ReclaimLocked(uint256 unlockTime);
     error ExitNotPaidOut(uint256 index);
     error AlreadyRecovered(bytes32 itemHash);
+    error BuyerNotAllowed(address buyer);
+    error GatewayNotAllowed(address gateway);
+    error ExitAlreadySpent(uint256 index);
+    error ZeroAddress();
 
     /// @notice Settle a signed order. Callable by anyone (the relayer is msg.sender and earns relayerFee).
+    ///         Only the router's trusted buyer and market-allowed gateways are accepted: settle() measures its
+    ///         payment-token balance delta, so no untrusted code may run inside that window (re-audit C1).
     /// @return proceeds payment-token amount sent to the seller
     function settle(ExitClaim calldata claim, SellOrder calldata order, bytes calldata signature)
         external
         returns (uint256 proceeds);
 
     /// @notice Return a router-owned exit to its proven child-chain sender, who then claims it the normal way.
+    ///         Reverts once the Outbox has executed the exit (use recoverExecuted then, re-audit H1).
     ///         Proves the leaf (value 0 or WETH-style value = amount) against a valid root. Callable by the
     ///         sender at any time, or by anyone RECLAIM_GRACE after the withdrawal (so relayers can settle
     ///         signed orders without being griefed by third-party reclaims).
@@ -66,6 +73,9 @@ interface IExitIntentRouter {
     function orderDigest(SellOrder calldata order) external view returns (bytes32);
 
     function market() external view returns (address);
+
+    /// @notice The only IExitBuyer orders may sell to (the ExitVault), fixed at deployment.
+    function buyer() external view returns (address);
 
     function paymentToken() external view returns (address);
 }

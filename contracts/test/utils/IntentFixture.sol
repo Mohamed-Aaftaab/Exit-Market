@@ -41,7 +41,7 @@ abstract contract IntentFixture is ExitFixture {
         relayer = makeAddr("relayer");
         lp = makeAddr("lp");
         vault = new ExitVault(IERC20(address(usdg)), IExitMarket(address(market)), owner, "Exit Vault USDG", "xvUSDG");
-        router = new ExitIntentRouter(address(market));
+        router = new ExitIntentRouter(address(market), address(vault));
         _fund(lp, address(vault), LP_DEPOSIT);
         vm.prank(lp);
         vault.deposit(LP_DEPOSIT, lp);

@@ -19,6 +19,7 @@
     "ethers": "^5.8.0",
     "forge-std": "github:foundry-rs/forge-std#v1.10.0",
     "hardhat": "^3.18.0",
+    "playwright-core": "^1.63.0",
     "typescript": "5.9",
     "viem": "^2.57.0",
     "wabt": "^1.0.39"

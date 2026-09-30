@@ -50,7 +50,11 @@ def reset_scene(seconds: float) -> bpy.types.Scene:
     scene.render.fps = FPS
     scene.render.resolution_x, scene.render.resolution_y = 1920, 1080
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 64
+    scene.cycles.samples = 48  # OptiX denoising cleans the rest; scenes are mostly emissive
+    try:
+        scene.render.compositor_device = "GPU"  # the Fog Glow pass is slow on CPU at 1080p
+    except (AttributeError, TypeError):
+        pass
     scene.cycles.use_adaptive_sampling = True
     scene.cycles.use_denoising = True
     scene.cycles.max_bounces = 8

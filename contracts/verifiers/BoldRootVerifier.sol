@@ -98,8 +98,10 @@ contract BoldRootVerifier is IRootVerifier {
     {
         if (IOutbox(outbox).roots(sendRoot) != bytes32(0)) return (true, false, 0);
 
+        // Validity is decided by the ancestor walk alone. rejectedRoots is keyed by send root, so consulting it
+        // here would let a losing rival that copies an honest pending root invalidate that root (re-audit M1).
         Registered memory a = assertions[rollup][witness];
-        if (!a.exists || a.sendRoot != sendRoot || rejectedRoots[rollup][sendRoot]) return (false, true, 0);
+        if (!a.exists || a.sendRoot != sendRoot) return (false, true, 0);
 
         IBoldRollup r = IBoldRollup(rollup);
         BoldAssertionNode memory node = r.getAssertion(witness);

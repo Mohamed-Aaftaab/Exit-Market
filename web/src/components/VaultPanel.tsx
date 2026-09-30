@@ -34,12 +34,16 @@ function useVaultStats(vault: Address, user: Address | undefined) {
     query: { refetchInterval: 30_000 },
   });
   const [totalAssets, idle, outstanding, aprBps, baseFeeBps, withdrawable, shareLock, walletUsdg] = reads.data ?? [];
+  // NAV carries each open exit's discount as it accrues toward its deadline (and values rejected exits at 0).
+  const accrued =
+    totalAssets !== undefined && idle !== undefined && outstanding !== undefined ? totalAssets - idle - outstanding : undefined;
   return {
     error: reads.error,
     refetch: reads.refetch,
     totalAssets,
     idle,
     outstanding,
+    accrued,
     aprBps,
     baseFeeBps,
     shareLockHours: shareLock === undefined ? undefined : Number(shareLock) / 3600,
@@ -144,9 +148,12 @@ export function VaultPanel() {
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat label="Total assets" value={usdg(stats.totalAssets)} />
         <Stat label="Available now" value={usdg(stats.idle)} />
-        <Stat label="In pending exits" value={usdg(stats.outstanding)} />
-        <Stat label="Pricing" value={stats.aprBps === undefined ? "—" : `${bps(stats.aprBps)} APR`} />
-        <Stat label="Base fee" value={stats.baseFeeBps === undefined ? "—" : bps(stats.baseFeeBps)} />
+        <Stat label="In pending exits (cost)" value={usdg(stats.outstanding)} />
+        <Stat label="Accrued yield" value={stats.accrued === undefined ? "—" : `${stats.accrued < 0n ? "−" : "+"}${usdg(stats.accrued < 0n ? -stats.accrued : stats.accrued)}`} />
+        <Stat
+          label="Pricing"
+          value={stats.aprBps === undefined || stats.baseFeeBps === undefined ? "—" : `${bps(stats.baseFeeBps)} + ${bps(stats.aprBps)} APR`}
+        />
         <Stat label="Your withdrawable" value={usdg(stats.withdrawable)} />
       </dl>
       <DepositForm vault={vault} lockHours={stats.shareLockHours} onDone={() => stats.refetch()} />
