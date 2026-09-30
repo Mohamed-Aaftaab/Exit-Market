@@ -39,7 +39,7 @@ const TIMELINE: Block[] = [
     overlays: [{ card: "zero", at: 0.38, until: 0.95 }] },
   { id: "proof", voice: ["04-proof"], lead: 0.5, visual: { kind: "shot", dir: "shot3_proof", minSeconds: 16 } },
   { id: "sale", voice: ["05-sale"], lead: 0.4, visual: { kind: "clips", tag: true,
-    files: [{ file: "capture/withdraw.mp4", from: 3.0 }, { file: "cards/skip.png" }, { file: "capture/sell.mp4", from: 3.8, hold: 1.8 }] } },
+    files: [{ file: "capture/withdraw.mp4", from: 3.5, to: 14.5 }, { file: "cards/skip.png" }, { file: "capture/sell.mp4", from: 3.0, to: 22 }] } },
   { id: "gasless", voice: ["06-gasless"], lead: 0.4, visual: { kind: "clips", tag: true,
     files: [{ file: "capture/gasless-start.mp4", from: 5.0 }, { file: "capture/gasless-settled.mp4", from: 4.0 }] } },
   { id: "vault", voice: ["07-vault"], lead: 0.4, visual: { kind: "shot", dir: "shot4_vault", minSeconds: 12.5 } },
@@ -220,7 +220,7 @@ function main() {
   const final = `${OUT}/exit-market-demo.mp4`;
   run(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c:v", "copy", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", final]);
   writeFileSync(`${OUT}/exit-market-demo.srt`, cues.join("\n"));
-  run(FFMPEG, ["-y", "-i", final, "-vf", `subtitles=${OUT}/exit-market-demo.srt:fontsdir=video/assets/fonts:force_style='FontName=Inter,FontSize=15,PrimaryColour=&H00F0EBE8,OutlineColour=&H80000000,BorderStyle=1,Outline=1.2,Shadow=0,MarginV=36'`,
+  run(FFMPEG, ["-y", "-i", final, "-vf", `subtitles=${OUT}/exit-market-demo.srt:fontsdir=video/assets/fonts:force_style='FontName=Inter,FontSize=14,PrimaryColour=&H00FFFFFF,OutlineColour=&H50000000,BorderStyle=3,Outline=5,Shadow=0,MarginV=30'`,
     "-c:v", "libx264", "-crf", "17", "-preset", "medium", "-c:a", "copy", `${OUT}/exit-market-demo-captioned.mp4`]);
   console.log(`\n${final}: ${offset.toFixed(1)}s total (+ captioned version and .srt)`);
 }
