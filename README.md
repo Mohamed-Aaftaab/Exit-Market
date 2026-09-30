@@ -92,8 +92,9 @@ rebuilt byte for byte plus its Merkle path (`ExitLeaf.sol`), the root against a 
   exit was proven against is not rejected; the vault prices that and writes such exits off. On chains whose
   validators are allowlisted (Xai Testnet is one), that rests on those validators, as the chain's own bridge does
   until confirmation.
-- **The relayer cannot steal.** The seller's signed order fixes the buyer and the minimum proceeds; anyone can
-  relay; if no relayer shows up the exit can be reclaimed (`ExitIntentRouter.reclaim`).
+- **The relayer cannot steal, and is optional.** The seller's signed order fixes the buyer and the minimum proceeds.
+  Anyone can settle it, or reclaim the exit if nobody does: `node scripts/selfServe.ts settle <intent.json>` or
+  `node scripts/selfServe.ts reclaim <withdrawalTx>`.
 
 Full model, all findings and residual risks: [`docs/SECURITY.md`](docs/SECURITY.md).
 
@@ -175,6 +176,7 @@ FORK_TESTS=1 npx hardhat test solidity         # + 9 fork tests against Xai and 
 npm run test:web && npm run typecheck          # web unit tests, both TypeScript projects
 npm run web:dev                                # http://localhost:3000, no configuration needed
 node scripts/keeper.ts --loop                  # permissionless keeper
+node scripts/selfServe.ts settle <intent.json>  # be your own relayer (or: reclaim <withdrawalTx>)
 ```
 
 ## Deployments (Arbitrum Sepolia, v3)
