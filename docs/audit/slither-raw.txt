@@ -1,49 +1,66 @@
 === ExitMarket
-Reentrancy in ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#313-331):
-Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities
-ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#313-331) uses a dangerous strict equality:
-Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#dangerous-strict-equalities
-ExitMarket.isExitLive(ExitRecord) (contracts/ExitMarket.sol#203-208) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,exit.sendRoot,exit.nodeNum,exit.blockHash) (contracts/ExitMarket.sol#206)
-ExitMarket._verifyExit(address,IExitMarket.GatewayConfig,uint256,ExitClaim) (contracts/ExitMarket.sol#233-272) ignores return value by (owner_,None) = IL1ArbitrumExtendedGateway(gateway).getExternalCall(exitNum,c.initialDestination,) (contracts/ExitMarket.sol#238)
-ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#313-331) ignores return value by IExitBuyer(buyer).buyExit(exit) (contracts/ExitMarket.sol#318)
-ExitMarket._requireLive(IExitMarket.GatewayConfig,ExitRecord) (contracts/ExitMarket.sol#351-358) ignores return value by (owner_,None) = IL1ArbitrumExtendedGateway(exit.gateway).getExternalCall(exit.exitNum,exit.initialDestination,) (contracts/ExitMarket.sol#352-353)
-ExitMarket._requireLive(IExitMarket.GatewayConfig,ExitRecord) (contracts/ExitMarket.sol#351-358) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,exit.sendRoot,exit.nodeNum,exit.blockHash) (contracts/ExitMarket.sol#356)
+ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#316-341) uses arbitrary from in transferFrom: _paymentToken.safeTransferFrom(buyer,address(this),price) (contracts/ExitMarket.sol#331)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#arbitrary-from-in-transferfrom
+ExitMarket.isExitLive(ExitRecord) (contracts/ExitMarket.sol#206-211) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,exit.sendRoot,exit.nodeNum,exit.blockHash) (contracts/ExitMarket.sol#209)
+ExitMarket._verifyExit(address,IExitMarket.GatewayConfig,uint256,ExitClaim) (contracts/ExitMarket.sol#236-275) ignores return value by (owner_,None) = IL1ArbitrumExtendedGateway(gateway).getExternalCall(exitNum,c.initialDestination,) (contracts/ExitMarket.sol#241)
+ExitMarket._requireLive(IExitMarket.GatewayConfig,ExitRecord) (contracts/ExitMarket.sol#361-368) ignores return value by (owner_,None) = IL1ArbitrumExtendedGateway(exit.gateway).getExternalCall(exit.exitNum,exit.initialDestination,) (contracts/ExitMarket.sol#362-363)
+ExitMarket._requireLive(IExitMarket.GatewayConfig,ExitRecord) (contracts/ExitMarket.sol#361-368) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,exit.sendRoot,exit.nodeNum,exit.blockHash) (contracts/ExitMarket.sol#366)
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-return
-Reentrancy in ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#313-331):
+Reentrancy in ExitMarket._sellToBuyer(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#316-341):
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-3
-ExitMarket.buy(bytes32,uint256) (contracts/ExitMarket.sol#134-156) uses timestamp for comparisons
-ExitMarket.cancel(bytes32) (contracts/ExitMarket.sol#159-179) uses timestamp for comparisons
-ExitMarket._list(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#293-311) uses timestamp for comparisons
+ExitMarket.buy(bytes32,uint256) (contracts/ExitMarket.sol#137-159) uses timestamp for comparisons
+ExitMarket.cancel(bytes32) (contracts/ExitMarket.sol#162-182) uses timestamp for comparisons
+ExitMarket._list(bytes32,ExitRecord,address,bytes) (contracts/ExitMarket.sol#296-314) uses timestamp for comparisons
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
-Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#97) has address parameters but no indexed parameters
+Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#100) has address parameters but no indexed parameters
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unindexed-event-address-parameters
-INFO:Slither:contracts/ExitMarket.sol analyzed (21 contracts with 102 detectors), 12 result(s) found
+INFO:Slither:contracts/ExitMarket.sol analyzed (21 contracts with 102 detectors), 10 result(s) found
 === ExitVault
-ExitVault.buyExit(ExitRecord) (contracts/ExitVault.sol#82-98) uses timestamp for comparisons
-ExitVault.collect(ExitRecord,PayoutProof) (contracts/ExitVault.sol#101-111) uses timestamp for comparisons
-ExitVault.finalizeWriteOff(ExitRecord) (contracts/ExitVault.sol#129-137) uses timestamp for comparisons
-ExitVault.maxWithdraw(address) (contracts/ExitVault.sol#166-169) uses timestamp for comparisons
-ExitVault.maxRedeem(address) (contracts/ExitVault.sol#172-175) uses timestamp for comparisons
-ExitVault._update(address,address,uint256) (contracts/ExitVault.sol#219-224) uses timestamp for comparisons
-ExitVault._requirePurchased(ExitRecord) (contracts/ExitVault.sol#231-235) uses timestamp for comparisons
+ExitVault._isRejected(ExitVault.Position).probe (contracts/ExitVault.sol#325) is a local variable never initialized
+ExitVault.collect(ExitRecord,PayoutProof).released (contracts/ExitVault.sol#150) is a local variable never initialized
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#uninitialized-local-variables
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+ExitVault._isRejected(ExitVault.Position) (contracts/ExitVault.sol#324-332) has external calls inside a loop: r = market.isExitRejected(probe) (contracts/ExitVault.sol#329-331)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation/#calls-inside-a-loop
+ExitVault.finalizeWriteOff(ExitRecord) (contracts/ExitVault.sol#181-189) uses timestamp for comparisons
+ExitVault.maxWithdraw(address) (contracts/ExitVault.sol#226-229) uses timestamp for comparisons
+ExitVault.maxRedeem(address) (contracts/ExitVault.sol#232-235) uses timestamp for comparisons
+ExitVault._update(address,address,uint256) (contracts/ExitVault.sol#299-304) uses timestamp for comparisons
+ExitVault._joinWindow(ExitRecord) (contracts/ExitVault.sol#347-355) uses timestamp for comparisons
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
-Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#97) has address parameters but no indexed parameters
+Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#100) has address parameters but no indexed parameters
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unindexed-event-address-parameters
-INFO:Slither:contracts/ExitVault.sol analyzed (27 contracts with 102 detectors), 8 result(s) found
+INFO:Slither:contracts/ExitVault.sol analyzed (28 contracts with 102 detectors), 22 result(s) found
 === ExitIntentRouter
-Reentrancy in ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#37-68):
+Reentrancy in ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#47-83):
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities
-ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#37-68) ignores return value by (signer,err,None) = ECDSA.tryRecover(orderDigest(order),signature) (contracts/ExitIntentRouter.sol#46)
-ExitIntentRouter._requireProven(IExitMarket.GatewayConfig,address,uint256,ExitClaim) (contracts/ExitIntentRouter.sol#111-136) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,c.sendRoot,c.nodeNum,c.blockHash) (contracts/ExitIntentRouter.sol#134)
+ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#47-83) ignores return value by (signer,err,None) = ECDSA.tryRecover(orderDigest(order),signature) (contracts/ExitIntentRouter.sol#61)
+ExitIntentRouter.recoverExecuted(address,uint256,ExitClaim,PayoutProof) (contracts/ExitIntentRouter.sol#101-123) ignores return value by (owner_,None) = IL1ArbitrumExtendedGateway(gateway).getExternalCall(exitNum,address(this),) (contracts/ExitIntentRouter.sol#117)
+ExitIntentRouter._requireProven(IExitMarket.GatewayConfig,address,uint256,ExitClaim) (contracts/ExitIntentRouter.sol#165-192) ignores return value by (valid,None,None) = cfg.verifier.verifyRoot(cfg.rollup,cfg.outbox,c.sendRoot,c.nodeNum,c.blockHash) (contracts/ExitIntentRouter.sol#190)
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-return
-ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#37-68) uses timestamp for comparisons
+ExitIntentRouter.settle(ExitClaim,IExitIntentRouter.SellOrder,bytes) (contracts/ExitIntentRouter.sol#47-83) uses timestamp for comparisons
+ExitIntentRouter.reclaim(address,uint256,ExitClaim) (contracts/ExitIntentRouter.sol#86-98) uses timestamp for comparisons
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
-Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#97) has address parameters but no indexed parameters
+Event IExitMarket.FeeUpdated(uint16,address) (contracts/interfaces/IExitMarket.sol#100) has address parameters but no indexed parameters
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unindexed-event-address-parameters
-INFO:Slither:contracts/ExitIntentRouter.sol analyzed (30 contracts with 102 detectors), 5 result(s) found
+INFO:Slither:contracts/ExitIntentRouter.sol analyzed (30 contracts with 102 detectors), 7 result(s) found
 === verifiers/LegacyRootVerifier
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#different-pragma-directives-are-used
 INFO:Slither:contracts/verifiers/LegacyRootVerifier.sol analyzed (8 contracts with 102 detectors), 1 result(s) found
 === verifiers/BoldRootVerifier
+BoldRootVerifier._unchallengedToConfirmed(IBoldRollup,address,bytes32) (contracts/verifiers/BoldRootVerifier.sol#119-130) has external calls inside a loop: p = r.getAssertion(parent) (contracts/verifiers/BoldRootVerifier.sol#123)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation/#calls-inside-a-loop
 Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#different-pragma-directives-are-used
-INFO:Slither:contracts/verifiers/BoldRootVerifier.sol analyzed (9 contracts with 102 detectors), 1 result(s) found
+INFO:Slither:contracts/verifiers/BoldRootVerifier.sol analyzed (9 contracts with 102 detectors), 2 result(s) found

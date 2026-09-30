@@ -90,8 +90,8 @@ const CARDS: Card[] = [
     name: "quality",
     html: `<div class="full"><p class="eyebrow" style="color:${GREEN}">Built to be trusted</p>
       <p class="title">Five review rounds. Every high reproduced, fixed and tested.</p>
-      <div class="stats"><div class="stat"><b>411</b><span>Solidity tests, incl. fuzz &amp; invariants</span></div>
-      <div class="stat"><b>0</b><span>Slither high / medium</span></div>
+      <div class="stats"><div class="stat"><b>413</b><span>Solidity tests, incl. fuzz &amp; invariants</span></div>
+      <div class="stat"><b>0</b><span>open Slither findings, all triaged</span></div>
       <div class="stat"><b>9</b><span>mainnet &amp; Xai fork tests</span></div></div>
       <p class="body">Internal AI-assisted review (not a third-party audit): threat model and findings in docs/SECURITY.md.</p></div>`,
   },

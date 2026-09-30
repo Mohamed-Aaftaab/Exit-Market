@@ -46,7 +46,7 @@ const FEATURES = [
 const NUMBERS = [
   ["137", "pending BOLD assertions walked for a real Arbitrum One exit (mainnet fork)"],
   ["1.1M", "gas for that whole ancestor walk, measured on a mainnet fork"],
-  ["420", "tests: unit, fuzz, invariants, exploit regressions, mainnet forks"],
+  ["422", "tests: unit, fuzz, invariants, exploit regressions, mainnet forks"],
   ["99.4%", "line coverage of the production contracts"],
 ] as const;
 

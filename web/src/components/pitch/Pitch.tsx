@@ -186,7 +186,7 @@ function Mechanism() {
 }
 
 function Evidence() {
-  const numbers = [["420", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["5", "internal review rounds"], ["0", "Slither high / medium"]];
+  const numbers = [["422", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["5", "internal review rounds"], ["0", "open Slither findings, all triaged"]];
   return (
     <>
       <Slide n={9}>

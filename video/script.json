@@ -45,7 +45,7 @@
     },
     {
       "id": "09-depth",
-      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, about 1.1M gas); Stylus verifier; 419 tests, five review rounds",
+      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, about 1.1M gas); Stylus verifier; 422 tests, five review rounds",
       "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over four hundred tests, five rounds of security review, and every high severity finding reproduced and fixed."
     },
     {

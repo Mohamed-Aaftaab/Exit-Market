@@ -1,8 +1,8 @@
 # Test coverage and invariant evidence
 
 Date: 2026-10-01 (v3 contracts, after the round-5 fixes). Hardhat 3.18.0, solc 0.8.28 (viaIR, optimizer 200 runs), forge-std 1.10.0, EDR `cancun`.
-Result: **411 passing, 0 failing, 9 skipped** (the 9 skipped are the mainnet-fork tests, which need
-`FORK_TESTS=1` and network access; with it set, all 420 pass).
+Result: **413 passing, 0 failing, 9 skipped** (the 9 skipped are the mainnet-fork tests, which need
+`FORK_TESTS=1` and network access; with it set, all 422 pass).
 
 ## Reproduce
 
@@ -147,10 +147,10 @@ invariant file was run with the committed campaign sizes. **All 17 mutants were 
 
 | Kind | Count |
 |---|---:|
-| Unit / scenario tests | 377 |
+| Unit / scenario tests | 379 |
 | Property fuzz tests (`testFuzz_*`, 256 runs each unless stated) | 17 |
 | Invariant campaigns (7 market + 5 router + 5 vault) | 17 |
-| **Total passing** | **411** |
+| **Total passing** | **413** |
 | Skipped (mainnet fork, `FORK_TESTS` unset) | 9 |
 
 Of these, 21 are new in this evidence pack: the 12 market and router invariants and 9 gas-budget tests

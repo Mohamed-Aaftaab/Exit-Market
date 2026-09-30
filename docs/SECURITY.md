@@ -75,6 +75,9 @@ vault and router were redeployed as **v3** (addresses in the README); v1/v2 stay
 | R5-M4 | Medium | Gasless flow could strand an exit (withdrawal sent before the order was signed; amounts below the fee accepted) | Fixed: minimum amount checked before the withdrawal; the exit is saved before signing and can be signed later; store merges instead of overwriting |
 | R5-L1 | Low | Proofs used the newest node instead of the earliest pending one covering the withdrawal (worse price) | Fixed: `findCoveringNode` picks the earliest unresolved covering node |
 
+Slither on the v3 sources: four detector classes rated High or Medium fire, all triaged with reasons and tests in
+[`audit/SLITHER.md`](audit/SLITHER.md); none is open.
+
 Not changed (documented below): legacy pending nodes are accepted without a rival check (the BOLD verifier has
 one); fee-on-transfer listing tokens; an exit redirected to the market with empty hook data has no owner record.
 
@@ -129,6 +132,12 @@ Residual risks of these fixes (accepted):
   are not transferable exits). The payment token must not take a transfer fee (a short payment reverts
   `PaymentShortfall`). Listings of a fee-on-transfer *exit* token are not blocked: `settle` pays the full amount
   from the market's pool of that token, so a taxed token's shortfall would fall on other sellers of the same token.
+- **Buyer allowances.** `SELL_TO_BUYER` pulls the price from the seller-named buyer after its `buyExit` returns
+  a non-zero price (Slither `arbitrary-send-erc20`, triaged in [`audit/SLITHER.md`](audit/SLITHER.md)). An EOA or
+  a contract without `buyExit` cannot be charged (tested). A contract whose *fallback* returns 32+ bytes for
+  unknown selectors and holds a standing allowance to the market could be. Buyer contracts should approve the
+  exact price inside `buyExit`, as the vault does. Nothing in this repository leaves a standing allowance to the
+  market. A future market version can remove the case by requiring a magic return value from `buyExit`.
 - **Empty hook data.** `transferExitAndCall(…, market, "", "")` with no hook data hands the exit to the market
   without a listing, and the tokens are then stuck. The app and scripts always send hook data.
 - **Outbox upgrades.** Sources are frozen per gateway; a rollup outbox swap would require a new market deployment.

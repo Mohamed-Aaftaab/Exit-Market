@@ -138,13 +138,13 @@ Earlier contracts (v1, v2), same flow, all executed and collected by the keeper:
 
 ## Security and quality
 
-- **410 Solidity tests + 9 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz, stateful
+- **413 Solidity tests + 9 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz, stateful
   invariants (market, router, vault) and exploit regressions. Coverage: [`docs/audit/COVERAGE.md`](docs/audit/COVERAGE.md).
 - **Five internal review rounds** by specialised AI review agents (not a third-party audit). Every High or
   Critical finding was reproduced as an exploit test before its fix, including round 5's two Highs (a market
   balance-delta theft and the owner's ability to allow a hostile gateway), fixed and redeployed as v3:
   [`docs/SECURITY.md`](docs/SECURITY.md).
-- **Slither: 0 high, 0 medium** ([`docs/audit/SLITHER.md`](docs/audit/SLITHER.md)). Gas: [`docs/audit/GAS.md`](docs/audit/GAS.md).
+- **Slither: no open finding.** Every detector that fires on the v3 sources, including two rated High, is triaged with its reason and test ([`docs/audit/SLITHER.md`](docs/audit/SLITHER.md)). Gas: [`docs/audit/GAS.md`](docs/audit/GAS.md).
 - **CI** on every push: contracts, generated-ABI drift check, typecheck, web unit tests, lint and a production build
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
@@ -175,7 +175,7 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 
 ```bash
 npm install
-npx hardhat test solidity                      # 410 tests
+npx hardhat test solidity                      # 413 tests
 FORK_TESTS=1 npx hardhat test solidity         # + 9 fork tests against Xai and Arbitrum One mainnet
 npm run test:lib && npm run test:web           # library and web unit tests
 npm run typecheck                              # both TypeScript projects
