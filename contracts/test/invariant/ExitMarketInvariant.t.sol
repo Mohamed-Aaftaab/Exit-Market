@@ -223,4 +223,79 @@ contract ExitMarketInvariantTest is ExitTreeFixture {
             }
         }
     }
+
+    // ================================================================ non-vacuity guard
+
+    string[] internal outcomes;
+    mapping(string => uint256) internal seen;
+
+    /// @dev The invariants only mean something if the handler really reaches every outcome. A deterministic
+    ///      pseudo-random walk over 24 fresh deployments must hit each legal, hostile and unsolicited path at
+    ///      least once with zero violations; a handler edit that silently disables an action fails here.
+    function test_handlerReachesEveryOutcomeWithoutViolations() public {
+        _registerOutcomes();
+        uint256 r = uint256(keccak256("market-walk"));
+        for (uint256 world = 0; world < 24; ++world) {
+            if (world != 0) this.setUp();
+            for (uint256 step = 0; step < 200; ++step) {
+                r = uint256(keccak256(abi.encode(r, step)));
+                _step(r);
+            }
+            assertEq(handler.violations(), 0, handler.firstViolation());
+            for (uint256 k = 0; k < outcomes.length; ++k) seen[outcomes[k]] += handler.hits(outcomes[k]);
+        }
+        for (uint256 k = 0; k < outcomes.length; ++k) assertGt(seen[outcomes[k]], 0, outcomes[k]);
+    }
+
+    function _step(uint256 r) internal {
+        uint256 a = r % 18;
+        uint256 x = uint256(keccak256(abi.encode(r, 1)));
+        uint256 y = uint256(keccak256(abi.encode(r, 2)));
+        uint256 z = uint256(keccak256(abi.encode(r, 3)));
+        if (a == 0) handler.list(x, y, z);
+        else if (a == 1) handler.buy(x, y, z);
+        else if (a == 2) handler.cancel(x, y);
+        else if (a == 3) handler.settle(x);
+        else if (a == 4) handler.execute(x);
+        else if (a == 5) handler.sellToBuyer(x, y, z, uint256(keccak256(abi.encode(r, 4))));
+        else if (a == 6) handler.withdrawFees(x);
+        else if (a == 7) handler.setFee(x, y);
+        else if (a == 8) handler.warp(x);
+        else if (a == 9) handler.donate(x, y, z);
+        else if (a == 10) handler.misdirect(x);
+        else if (a == 11) handler.transferDirect(x, y);
+        else if (a == 12) handler.hostileNotListed(x, y);
+        else if (a == 13) handler.hostileListOrSellSpent(x, y);
+        else if (a == 14) handler.hostileRelistWhileListed(x);
+        else if (a == 15) handler.hostileSetFee(x, y);
+        else if (a == 16) handler.hostileBuyTerms(x, y);
+        else handler.hostileSellTerms(x, y);
+    }
+
+    function _registerOutcomes() internal {
+        delete outcomes;
+        outcomes.push("list");
+        outcomes.push("buy");
+        outcomes.push("buy:expired");
+        outcomes.push("buy:spent");
+        outcomes.push("cancel");
+        outcomes.push("cancel:notSeller");
+        outcomes.push("cancel:forwardedPayout");
+        outcomes.push("settle");
+        outcomes.push("settle:notPaidOut");
+        outcomes.push("execute");
+        outcomes.push("execute:paidMarket");
+        outcomes.push("sell");
+        outcomes.push("withdrawFees");
+        outcomes.push("setFee");
+        outcomes.push("donate");
+        outcomes.push("misdirect");
+        outcomes.push("transfer");
+        outcomes.push("hostile:notListed");
+        outcomes.push("hostile:spent");
+        outcomes.push("hostile:relistWhileListed");
+        outcomes.push("hostile:priceAboveMax");
+        outcomes.push("hostile:setFee");
+        outcomes.push("hostile:sellTerms");
+    }
 }

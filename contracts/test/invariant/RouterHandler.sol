@@ -164,7 +164,7 @@ contract RouterHandler is Test {
         r.relayer = _relayers[uint256(keccak256(abi.encode(seed, "relayer"))) % _relayers.length];
         uint256 amount = claimAt(i).amount;
         // Mostly a small or zero relayer fee; sometimes one so large the seller's proceeds cannot cover it.
-        r.relayerFee = feeSeed % 4 == 0 ? 0 : feeSeed % 8 == 1 ? bound(feeSeed / 8, 1, amount * 2) : bound(feeSeed, 1, 20e6);
+        r.relayerFee = feeSeed % 4 == 0 ? 0 : feeSeed % 8 == 1 ? _clamp(feeSeed / 8, 1, amount * 2) : _clamp(feeSeed, 1, 20e6);
         _plan(r, minSeed);
         _runSettle(r, seed);
     }
@@ -268,7 +268,7 @@ contract RouterHandler is Test {
     /// @dev Unsolicited payment-token transfer into the router.
     function donate(uint256 amountSeed) external {
         if (!_gate(amountSeed, 3)) return _hit("donate:gated");
-        uint256 amount = bound(amountSeed, 1, 1e12);
+        uint256 amount = _clamp(amountSeed, 1, 1e12);
         usdg.mint(address(router), amount);
         minted += amount;
         donated += amount;
@@ -276,15 +276,15 @@ contract RouterHandler is Test {
     }
 
     function warp(uint256 secs) external {
-        vm.warp(block.timestamp + bound(secs, 1, 2 days));
+        vm.warp(block.timestamp + _clamp(secs, 1, 2 days));
         _hit("warp");
     }
 
     /// @dev The vault owner retunes pricing and limits: discounts move, and the vault may start refusing exits
     ///      (too large, or still pending). Settlements must stay conservative either way.
     function setVaultParams(uint256 seed) external {
-        uint16 baseFee = uint16(bound(seed, 0, 500));
-        uint16 apr = uint16(bound(uint256(keccak256(abi.encode(seed, "apr"))), 0, 5_000));
+        uint16 baseFee = uint16(_clamp(seed, 0, 500));
+        uint16 apr = uint16(_clamp(uint256(keccak256(abi.encode(seed, "apr"))), 0, 5_000));
         uint256 maxExit = uint256(keccak256(abi.encode(seed, "max"))) % 4 == 0 ? 1_500e6 : type(uint256).max;
         bool acceptPending = uint256(keccak256(abi.encode(seed, "pending"))) % 5 != 0;
         vm.prank(vaultOwner);
@@ -412,7 +412,7 @@ contract RouterHandler is Test {
         uint256 received = price - (price * market.feeBps()) / BPS;
         uint256 headroom = received >= r.relayerFee ? received - r.relayerFee : 0;
         uint256 mode = minSeed % 4;
-        r.minProceeds = mode == 0 ? headroom : mode == 1 ? headroom + 1 : mode == 2 ? bound(minSeed, 0, headroom) : 0;
+        r.minProceeds = mode == 0 ? headroom : mode == 1 ? headroom + 1 : mode == 2 ? _clamp(minSeed, 0, headroom) : 0;
         r.expectOk = !r.refused && received >= r.minProceeds + r.relayerFee;
     }
 
@@ -424,7 +424,7 @@ contract RouterHandler is Test {
             buyer: address(vault),
             minProceeds: r.minProceeds,
             relayerFee: r.relayerFee,
-            deadline: uint64(block.timestamp + bound(ttlSeed, 1 hours, 2 days))
+            deadline: uint64(block.timestamp + _clamp(ttlSeed, 1 hours, 2 days))
         });
         bytes memory sig = _sign(_keyOf(r.seller), o);
         Snap memory pre = _snap(r.seller, r.relayer, address(vault));
@@ -541,6 +541,14 @@ contract RouterHandler is Test {
     function _sign(uint256 pk, IExitIntentRouter.SellOrder memory o) internal view returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, _digest(o));
         return abi.encodePacked(r, s, v);
+    }
+
+    /// @dev Maps `x` into [lo, hi] by modulo. Local replacement for forge-std's bound(), which logs a line on
+    ///      every call and would flood the output of the walk tests.
+    function _clamp(uint256 x, uint256 lo, uint256 hi) internal pure returns (uint256) {
+        require(lo <= hi, "clamp: empty range");
+        if (hi - lo == type(uint256).max) return x;
+        return lo + (x % (hi - lo + 1));
     }
 
     /// @dev True for roughly 1 in `n` seeds. Uses high bits so it is independent of `seed % exits`.

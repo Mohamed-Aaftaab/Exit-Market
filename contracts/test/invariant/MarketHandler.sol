@@ -135,8 +135,8 @@ contract MarketHandler is Test {
         if (i == NONE) return _hit("list:skipped");
         ExitClaim memory c = claimAt(i);
         address seller = shadowOwner[i];
-        uint256 price = bound(priceSeed, 1, c.amount * 2);
-        uint64 expiry = uint64(block.timestamp + bound(ttlSeed, 1 hours, 3 days));
+        uint256 price = _clamp(priceSeed, 1, c.amount * 2);
+        uint64 expiry = uint64(block.timestamp + _clamp(ttlSeed, 1 hours, 3 days));
         uint16 feeNow = modelFeeBps;
         bytes memory data = abi.encode(IExitMarket.Action.LIST, c, abi.encode(price, expiry));
 
@@ -162,7 +162,7 @@ contract MarketHandler is Test {
         bytes32 id = idOf(i);
         address b = _traders[buyerSeed % _traders.length];
         uint256 price = termsPrice[i];
-        uint256 maxPrice = price + bound(slackSeed, 0, 1e6);
+        uint256 maxPrice = price + _clamp(slackSeed, 0, 1e6);
         _mint(usdg, b, price);
 
         bytes memory callData = abi.encodeCall(market.buy, (id, maxPrice));
@@ -281,11 +281,11 @@ contract MarketHandler is Test {
         uint256 i = _pickIdle(seed);
         if (i == NONE) return _hit("sell:skipped");
         // Every 4th sale is tiny so that the fee rounds down to zero.
-        uint256 pay = paySeed % 4 == 0 ? bound(paySeed / 4, 1, 400) : bound(paySeed, 1, claimAt(i).amount * 2);
+        uint256 pay = paySeed % 4 == 0 ? _clamp(paySeed / 4, 1, 400) : _clamp(paySeed, 1, claimAt(i).amount * 2);
         TestBuyer tb = new TestBuyer(IERC20(address(usdg)), pay);
-        if (lieSeed % 2 == 0) tb.setClaimed(bound(lieSeed, 1, type(uint128).max)); // reported price is ignored
+        if (lieSeed % 2 == 0) tb.setClaimed(_clamp(lieSeed, 1, type(uint128).max)); // reported price is ignored
         _mint(usdg, address(tb), pay);
-        _sell(i, address(tb), pay, bound(minSeed, 0, pay));
+        _sell(i, address(tb), pay, _clamp(minSeed, 0, pay));
     }
 
     function _sell(uint256 i, address tb, uint256 pay, uint256 minPayout) internal {
@@ -332,7 +332,7 @@ contract MarketHandler is Test {
 
     function setFee(uint256 bpsSeed, uint256 recipientSeed) external {
         uint256 m = bpsSeed % 6;
-        uint16 bps = m == 0 ? 0 : m == 1 ? 200 : m == 2 ? 199 : m == 3 ? 1 : uint16(bound(bpsSeed / 6, 0, 200));
+        uint16 bps = m == 0 ? 0 : m == 1 ? 200 : m == 2 ? 199 : m == 3 ? 1 : uint16(_clamp(bpsSeed / 6, 0, 200));
         address r = _recipients[recipientSeed % 2];
         vm.prank(marketOwner);
         try market.setFee(bps, r) {}
@@ -346,7 +346,7 @@ contract MarketHandler is Test {
     }
 
     function warp(uint256 secs) external {
-        vm.warp(block.timestamp + bound(secs, 1, 2 days));
+        vm.warp(block.timestamp + _clamp(secs, 1, 2 days));
         _hit("warp");
     }
 
@@ -356,7 +356,7 @@ contract MarketHandler is Test {
         if (!_gate(amountSeed, 3)) return _hit("donate:gated");
         MockERC20 token = tokenSeed % 2 == 0 ? usdg : other;
         address donor = _traders[donorSeed % _traders.length];
-        uint256 amount = bound(amountSeed, 1, 1e12);
+        uint256 amount = _clamp(amountSeed, 1, 1e12);
         _mint(token, donor, amount);
         vm.prank(donor);
         token.transfer(address(market), amount);
@@ -486,11 +486,11 @@ contract MarketHandler is Test {
         address caller;
         if (kind % 2 == 0) {
             caller = marketOwner;
-            callData = abi.encodeCall(market.setFee, (uint16(bound(bpsSeed, 201, type(uint16).max)), _recipients[0]));
+            callData = abi.encodeCall(market.setFee, (uint16(_clamp(bpsSeed, 201, type(uint16).max)), _recipients[0]));
             sel = IExitMarket.FeeTooHigh.selector;
         } else {
             caller = stranger;
-            callData = abi.encodeCall(market.setFee, (uint16(bound(bpsSeed, 0, 200)), stranger));
+            callData = abi.encodeCall(market.setFee, (uint16(_clamp(bpsSeed, 0, 200)), stranger));
             sel = bytes4(keccak256("OwnableUnauthorizedAccount(address)"));
         }
         _mustRevert(caller, address(market), callData, sel, "hostile:setFee");
@@ -590,6 +590,14 @@ contract MarketHandler is Test {
             if (_lastStatus[i] == IExitMarket.Status.Listed && !executed[i]) return i;
         }
         return NONE;
+    }
+
+    /// @dev Maps `x` into [lo, hi] by modulo. Local replacement for forge-std's bound(), which logs a line on
+    ///      every call and would flood the output of the walk tests.
+    function _clamp(uint256 x, uint256 lo, uint256 hi) internal pure returns (uint256) {
+        require(lo <= hi, "clamp: empty range");
+        if (hi - lo == type(uint256).max) return x;
+        return lo + (x % (hi - lo + 1));
     }
 
     /// @dev True for roughly 1 in `n` seeds. Uses high bits so it is independent of `seed % exits`.

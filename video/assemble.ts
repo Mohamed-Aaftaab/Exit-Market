@@ -15,10 +15,14 @@ const OUT = "video/out";
 const BLOCKS = `${OUT}/blocks`;
 const FADE = 0.35;
 
+/** A recorded clip or a still card. `from`/`to` trim page-load time; `hold` freezes the last frame. */
+type Clip = { file: string; from?: number; to?: number; hold?: number };
 type Visual =
   | { kind: "shot"; dir: string; minSeconds: number }
-  | { kind: "clips"; files: string[]; tag: boolean }
+  | { kind: "clips"; files: Clip[]; tag: boolean }
   | { kind: "cards"; files: string[] };
+const STILL_SECONDS = 2.5;
+const MAX_SPEED = 1.6; // recordings are sped up at most this much; a longer block just outlasts its narration
 type Overlay = { card: string; at: number; until?: number }; // fractions of the block's narration span
 interface Block {
   id: string;
@@ -34,10 +38,12 @@ const TIMELINE: Block[] = [
   { id: "hook", voice: ["03-hook"], lead: 0.5, visual: { kind: "shot", dir: "shot2_hook", minSeconds: 16.4 },
     overlays: [{ card: "zero", at: 0.38, until: 0.95 }] },
   { id: "proof", voice: ["04-proof"], lead: 0.5, visual: { kind: "shot", dir: "shot3_proof", minSeconds: 16 } },
-  { id: "sale", voice: ["05-sale"], lead: 0.4, visual: { kind: "clips", files: ["capture/withdraw.mp4", "cards/skip.png", "capture/sell.mp4"], tag: true } },
-  { id: "gasless", voice: ["06-gasless"], lead: 0.4, visual: { kind: "clips", files: ["capture/gasless-start.mp4", "capture/gasless-settled.mp4"], tag: true } },
+  { id: "sale", voice: ["05-sale"], lead: 0.4, visual: { kind: "clips", tag: true,
+    files: [{ file: "capture/withdraw.mp4", from: 3.0 }, { file: "cards/skip.png" }, { file: "capture/sell.mp4", from: 3.8, hold: 1.8 }] } },
+  { id: "gasless", voice: ["06-gasless"], lead: 0.4, visual: { kind: "clips", tag: true,
+    files: [{ file: "capture/gasless-start.mp4", from: 5.0 }, { file: "capture/gasless-settled.mp4", from: 4.0 }] } },
   { id: "vault", voice: ["07-vault"], lead: 0.4, visual: { kind: "shot", dir: "shot4_vault", minSeconds: 12.5 } },
-  { id: "explorer", voice: ["08-explorer"], lead: 0.3, visual: { kind: "clips", files: ["capture/explorer.mp4"], tag: true } },
+  { id: "explorer", voice: ["08-explorer"], lead: 0.3, visual: { kind: "clips", tag: true, files: [{ file: "capture/explorer.mp4", from: -17.5, to: -5 }] } },
   { id: "depth", voice: ["09-depth"], lead: 0.4, visual: { kind: "cards", files: ["bold", "stylus", "quality"] } },
   { id: "close", voice: ["10-close"], lead: 0.3, visual: { kind: "shot", dir: "shot5_close", minSeconds: 12.5 } },
 ];
@@ -79,20 +85,34 @@ function visualInputs(block: Block, target: number): { args: string[]; chain: st
   }
   if (v.kind === "cards") {
     const each = target / v.files.length;
-    const args = v.files.flatMap((f) => ["-loop", "1", "-t", String(each), "-framerate", "30", "-i", `${OUT}/cards/${f}.png`]);
+    // One still frame per card: zoompan expands each INPUT frame into `d` output frames.
+    const args = v.files.flatMap((f) => ["-i", `${OUT}/cards/${f}.png`]);
     const zoomed = v.files.map((_, i) =>
       `[${i}:v]scale=2112:1188,zoompan=z='1+0.0006*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${Math.ceil(each * 30)}:s=1920x1080:fps=30,fade=t=in:d=0.3,fade=t=out:st=${(each - 0.3).toFixed(2)}:d=0.3[c${i}]`);
     return { args, chain: `${zoomed.join(";")};${v.files.map((_, i) => `[c${i}]`).join("")}concat=n=${v.files.length}:v=1:a=0`, length: target };
   }
-  // clips: stills get 2.5 s; recordings are sped up (up to 3x) to fit the narration + 2 s of breathing room
-  const lens = v.files.map((f) => (f.endsWith(".png") ? 2.5 : duration(`${OUT}/${f}`)));
-  const recorded = lens.reduce((a, b, i) => a + (v.files[i].endsWith(".png") ? 0 : b), 0);
-  const stills = lens.reduce((a, b, i) => a + (v.files[i].endsWith(".png") ? b : 0), 0);
-  const speed = Math.min(3, Math.max(1, recorded / Math.max(1, target + 2 - stills)));
-  const args = v.files.flatMap((f) => (f.endsWith(".png") ? ["-loop", "1", "-t", "2.5", "-framerate", "30", "-i", `${OUT}/${f}`] : ["-i", `${OUT}/${f}`]));
-  const parts = v.files.map((f, i) => `[${i}:v]${f.endsWith(".png") ? "" : `setpts=PTS/${speed.toFixed(3)},`}fps=30,scale=1920:1080,setsar=1[p${i}]`);
+  // clips: stills get STILL_SECONDS; recordings are trimmed, then sped up (at most MAX_SPEED) toward the narration
+  const isStill = (c: Clip) => c.file.endsWith(".png");
+  const spans = v.files.map((c) => {
+    if (isStill(c)) return { from: 0, len: STILL_SECONDS };
+    const full = duration(`${OUT}/${c.file}`);
+    const at = (t: number | undefined, fallback: number) => (t === undefined ? fallback : t < 0 ? full + t : t); // negative = from the end
+    const from = at(c.from, 0);
+    return { from, len: at(c.to, full) - from };
+  });
+  const recorded = spans.reduce((a, s, i) => a + (isStill(v.files[i]) ? 0 : s.len), 0);
+  const holds = v.files.reduce((a, c) => a + (c.hold ?? 0), 0);
+  const stills = spans.reduce((a, s, i) => a + (isStill(v.files[i]) ? s.len : 0), 0) + holds;
+  const speed = Math.min(MAX_SPEED, Math.max(1, recorded / Math.max(1, target + 2 - stills)));
+  const args = v.files.flatMap((c) => (isStill(c) ? ["-loop", "1", "-t", String(STILL_SECONDS), "-framerate", "30", "-i", `${OUT}/${c.file}`] : ["-i", `${OUT}/${c.file}`]));
+  const parts = v.files.map((c, i) => {
+    const s = spans[i];
+    const timing = isStill(c) ? "" : `trim=start=${s.from.toFixed(2)}:duration=${s.len.toFixed(2)},setpts=(PTS-STARTPTS)/${speed.toFixed(3)},`;
+    const hold = c.hold ? `,tpad=stop_mode=clone:stop_duration=${c.hold}` : "";
+    return `[${i}:v]${timing}fps=30,scale=1920:1080,setsar=1${hold}[p${i}]`;
+  });
   const length = recorded / speed + stills;
-  return { args, chain: `${parts.join(";")};${v.files.map((_, i) => `[p${i}]`).join("")}concat=n=${v.files.length}:v=1:a=0,tpad=stop_mode=clone:stop_duration=${Math.max(0, target - length)}`, length: Math.max(target, length) };
+  return { args, chain: `${parts.join(";")};${v.files.map((_, i) => `[p${i}]`).join("")}concat=n=${v.files.length}:v=1:a=0,tpad=stop_mode=clone:stop_duration=${Math.max(0, target - length).toFixed(2)}`, length: Math.max(target, length) };
 }
 
 function buildBlock(block: Block, index: number) {
@@ -132,6 +152,45 @@ function buildBlock(block: Block, index: number) {
   return { file, total, voice };
 }
 
+const CAPTION_CHARS = 62;
+
+/** Splits narration into short caption phrases (sentence, then comma boundaries), each at most CAPTION_CHARS. */
+function captionChunks(text: string): string[] {
+  const chunks: string[] = [];
+  for (const sentence of text.match(/[^.?!]+[.?!]+/g) ?? [text]) {
+    let line = "";
+    for (const part of sentence.trim().split(/(?<=,)\s+/)) {
+      for (const word of part.split(/\s+/)) {
+        if (line && (line + " " + word).length > CAPTION_CHARS) {
+          chunks.push(line);
+          line = word;
+        } else {
+          line = line ? `${line} ${word}` : word;
+        }
+      }
+      if (line.length > CAPTION_CHARS * 0.6) {
+        chunks.push(line);
+        line = "";
+      }
+    }
+    if (line) chunks.push(line);
+  }
+  return chunks;
+}
+
+/** One cue per phrase, timed across the clip in proportion to its length. */
+function cuesFor(text: string, start: number, len: number): { from: number; to: number; text: string }[] {
+  const chunks = captionChunks(text);
+  const total = chunks.reduce((a, c) => a + c.length, 0);
+  let t = start;
+  return chunks.map((chunk) => {
+    const span = (len * chunk.length) / total;
+    const cue = { from: t, to: t + span, text: chunk };
+    t += span;
+    return cue;
+  });
+}
+
 function srtTime(s: number) {
   const ms = Math.round(s * 1000);
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -146,7 +205,12 @@ function main() {
   const cues: string[] = [];
   const built = TIMELINE.map((block, i) => {
     const b = buildBlock(block, i);
-    for (const v of b.voice) cues.push(`${cues.length + 1}\n${srtTime(offset + v.start)} --> ${srtTime(offset + v.start + v.len)}\n${text.get(v.segment)}\n`);
+    for (const v of b.voice) {
+      // v.len includes the narration's tail pause; captions end with the speech
+      for (const cue of cuesFor(text.get(v.segment) ?? "", offset + v.start, Math.max(0.5, v.len - 0.6))) {
+        cues.push(`${cues.length + 1}\n${srtTime(cue.from)} --> ${srtTime(cue.to)}\n${cue.text}\n`);
+      }
+    }
     offset += b.total;
     return b;
   });

@@ -84,6 +84,9 @@ the parent chain.
 | Exit #5: gasless — withdrawn to the router by a wallet with **0 ETH** on Arbitrum Sepolia | [`0x6e7906ca…7781`](https://testnet-explorer-v2.xai-chain.net/tx/0x6e7906ca311ee8217a5d1365cb1521671945e61db58f6b4eab65bf43a3827781) |
 | Settled by the app's relayer; the seller received 9.945 USDG | [`0xd11f3260…719d`](https://sepolia.arbiscan.io/tx/0xd11f3260936bd5231a430cec999489f7da4b724a65a282c27e4500f7195e719d) |
 | Keeper executed, vault collected | [`0x3f0dbc0d…cba47`](https://sepolia.arbiscan.io/tx/0x3f0dbc0dd818d09a45bed71d0c2d8c0abfa5e7d983903a930e5eefd5875cba47) · [`0x2cf84c1a…c7e0`](https://sepolia.arbiscan.io/tx/0x2cf84c1a15fffdbad17e20b5429867e12273bca0389d2ccbbd237a235648c7e0) |
+| **v2 contracts** — Exit #6: 10 USDG sold in the app while pending (seller got 9.96 USDG) | [`0xfc3a6c28…d87d`](https://sepolia.arbiscan.io/tx/0xfc3a6c284974612332fb8e1ff2667a52e9c6415c7e9d23a96f00e1c174a6d87d) |
+| Exit #7: gasless through router v2, settled by the app's relayer | [`0x06a3978b…b3eb`](https://sepolia.arbiscan.io/tx/0x06a3978b263d3f9743b3a2fb30fa81889b7732b3ea5d2ca668589975dca1b3eb) |
+| Keeper executed and collected both (vault v2: 19 → 19.015 USDG) | [`0xd4453202…becb`](https://sepolia.arbiscan.io/tx/0xd44532020be37c7f2e72fbcff55fd1912c3a8de27a8105e5453252f1696ebecb) · [`0xd329b47b…bfd9`](https://sepolia.arbiscan.io/tx/0xd329b47b64202458c5f9513a562defd7777c6db2eb7031328348e615103cbfd9) · [`0x69dca567…335a`](https://sepolia.arbiscan.io/tx/0x69dca56778de309be49cff611818afad58e0c4ed563402006260afcde5ee335a) · [`0xa1d4794b…ea6e`](https://sepolia.arbiscan.io/tx/0xa1d4794b70c60c693a5aeaeb8c01723a39a1fc4cc18ed68fa38bc2e2e8ecea6e) |
 
 ## Arbitrum technology used
 
@@ -98,8 +101,9 @@ the parent chain.
 
 ## Security and quality
 
-- **395 Solidity tests + 9 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz, stateful
-  invariants (market, router, vault) and exploit regressions.
+- **406 Solidity tests + 9 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz, stateful
+  invariants (market, router, vault) and exploit regressions. **99.4% line coverage** of the production
+  contracts; the three uncovered lines are defensive reverts, each explained in the coverage report.
 - **Four internal review rounds** by specialised AI review agents (not a third-party audit). Every High/Critical
   finding — including a critical router bug found after its first deployment and fixed the same day — has a
   regression test that reproduced the loss before the fix: [`docs/SECURITY.md`](docs/SECURITY.md).
@@ -132,7 +136,7 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 
 ```bash
 npm install
-npx hardhat test solidity                      # 395 tests
+npx hardhat test solidity                      # 406 tests
 FORK_TESTS=1 npx hardhat test solidity         # + fork tests against Xai and Arbitrum One mainnet
 npm run web:dev                                # http://localhost:3000
 node scripts/keeper.ts --loop                  # permissionless keeper

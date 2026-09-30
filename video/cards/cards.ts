@@ -28,11 +28,11 @@ html, body { width: 1920px; height: 1080px; font-family: Inter, sans-serif; colo
 .stats { display: flex; gap: 72px; margin-top: 20px; }
 .stat b { display: block; font-family: Mono; font-size: 64px; font-weight: 700; color: #e8ebf0; }
 .stat span { font-size: 26px; color: #8b95a5; }
-.lower { position: absolute; left: 120px; bottom: 110px; padding: 30px 42px; border-radius: 18px;
+.lower { position: absolute; left: 120px; bottom: 270px; padding: 30px 42px; border-radius: 18px;
   background: rgba(7, 9, 13, 0.72); border: 1px solid rgba(76, 147, 245, 0.35); backdrop-filter: blur(6px); }
 .lower b { display: block; font-family: Mono; font-size: 76px; font-weight: 700; line-height: 1; }
 .lower span { display: block; margin-top: 12px; font-size: 30px; color: #c3cad5; max-width: 900px; }
-.tag { position: absolute; left: 48px; top: 40px; padding: 10px 18px; border-radius: 999px; font-family: Mono;
+.tag { position: absolute; left: 48px; bottom: 40px; padding: 10px 18px; border-radius: 999px; font-family: Mono;
   font-size: 22px; letter-spacing: 1px; background: rgba(7, 9, 13, 0.78); border: 1px solid rgba(63, 191, 136, 0.55); color: #3fbf88; }
 .src { position: absolute; left: 160px; bottom: 70px; font-family: Mono; font-size: 22px; color: #6b7686; }
 `;

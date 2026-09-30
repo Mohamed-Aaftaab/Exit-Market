@@ -26,7 +26,7 @@
     {
       "id": "05-sale",
       "visual": "App footage: withdraw on Xai Testnet, proof trace turns green, one-signature sale, Arbiscan tx",
-      "text": "Here it is, live on an Orbit chain. I withdraw ten USDG from Xai testnet. When the next rollup node is posted, my withdrawal becomes sellable, and the app shows every check. One signature, and the vault pays me now, not in six days."
+      "text": "Here it is, live on an Orbit chain. I withdraw ten USDG from Xai testnet. When the next rollup node is posted, my withdrawal becomes sellable, and the app shows every check. One signature, and the vault pays me nine point nine six USDG, now, not in six days."
     },
     {
       "id": "06-gasless",

@@ -170,4 +170,63 @@ contract ExitIntentRouterInvariantTest is ExitTreeFixture {
     function invariant_settlementsAndHostileCallsBehave() public view {
         assertEq(handler.violations(), 0, handler.firstViolation());
     }
+
+    // ================================================================ non-vacuity guard
+
+    string[] internal outcomes;
+    mapping(string => uint256) internal seen;
+
+    /// @dev The invariants only mean something if the handler really reaches every outcome. A deterministic
+    ///      pseudo-random walk over 24 fresh deployments must hit each legal and hostile path at least once with
+    ///      zero violations; a handler edit that silently disables an action fails here.
+    function test_handlerReachesEveryOutcomeWithoutViolations() public {
+        _registerOutcomes();
+        uint256 r = uint256(keccak256("router-walk"));
+        for (uint256 world = 0; world < 24; ++world) {
+            if (world != 0) this.setUp();
+            for (uint256 step = 0; step < 150; ++step) {
+                r = uint256(keccak256(abi.encode(r, step)));
+                _step(r);
+            }
+            assertEq(handler.violations(), 0, handler.firstViolation());
+            for (uint256 k = 0; k < outcomes.length; ++k) seen[outcomes[k]] += handler.hits(outcomes[k]);
+        }
+        for (uint256 k = 0; k < outcomes.length; ++k) assertGt(seen[outcomes[k]], 0, outcomes[k]);
+    }
+
+    function _step(uint256 r) internal {
+        uint256 a = r % 10;
+        uint256 x = uint256(keccak256(abi.encode(r, 1)));
+        uint256 y = uint256(keccak256(abi.encode(r, 2)));
+        uint256 z = uint256(keccak256(abi.encode(r, 3)));
+        if (a == 0) handler.settleOrder(x, y, z);
+        else if (a == 1) handler.reclaim(x, y);
+        else if (a == 2) handler.execute(x);
+        else if (a == 3) handler.recover(x, y);
+        else if (a == 4) handler.donate(x);
+        else if (a == 5) handler.warp(x);
+        else if (a == 6) handler.setVaultParams(x);
+        else if (a == 7) handler.hostileSettle(x, y);
+        else if (a == 8) handler.hostileReplay(x);
+        else handler.hostileRecover(x, y);
+    }
+
+    function _registerOutcomes() internal {
+        delete outcomes;
+        outcomes.push("settle");
+        outcomes.push("settle:belowMin");
+        outcomes.push("settle:vaultRefused");
+        outcomes.push("reclaim:bySeller");
+        outcomes.push("reclaim:byAnyoneAfterGrace");
+        outcomes.push("reclaim:locked");
+        outcomes.push("reclaim:executed");
+        outcomes.push("execute:paidRouter");
+        outcomes.push("execute:paidOther");
+        outcomes.push("recover");
+        outcomes.push("donate");
+        outcomes.push("setVaultParams");
+        outcomes.push("hostile:settle");
+        outcomes.push("hostile:replay");
+        outcomes.push("hostile:recover");
+    }
 }
