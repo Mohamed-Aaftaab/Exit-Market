@@ -15,7 +15,7 @@ const STATS: Stat[] = [
   { icon: "<", target: CHALLENGE_DAYS, decimals: 1, suffix: " days", label: "Challenge period skipped" },
   { icon: "$", target: snapshot.flow30d.tokenUsd / 1e6, prefix: "$", suffix: "M", label: "Withdrawn in 30 days" },
   { icon: "#", target: snapshot.stranded.allTime.count, label: "Exits never claimed" },
-  { icon: "*", target: 0, label: "Mainnet uses before us" },
+  { icon: "*", target: 0, label: "Mainnet uses of the hook, ever" },
 ];
 
 // Abstract glyphs for the three layers a withdrawal crosses (stacked L3, a rollup cell, the base chain).

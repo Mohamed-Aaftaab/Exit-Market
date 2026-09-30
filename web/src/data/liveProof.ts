@@ -13,32 +13,32 @@ export const shortHash = (hash: string) => `${hash.slice(0, 10)}…${hash.slice(
 
 export const LIVE_PROOF: ReadonlyArray<ProofTx> = [
   {
-    label: "A 10 USDG withdrawal leaves Xai Testnet",
-    detail: "Exit #6, a standard bridge withdrawal",
+    label: "A 5 USDG withdrawal leaves Xai Testnet",
+    detail: "Exit #12, a standard bridge withdrawal",
     chain: "xaiTestnet",
-    hash: "0x462167a725202c8980cd6023fb5e13ad0dedc6f63dc6aab4a068f4bb631c7aac",
+    hash: "0xf2acf5520923833e07abf580bf43596facf890dcf9acde596a66540a9393dda4",
   },
   {
     label: "Sold while still pending, in one signature",
-    detail: "The seller received 9.96 USDG; the vault now owns the exit",
+    detail: "v3 market: proven on-chain, price pulled from the vault, which now owns the exit",
     chain: "arbitrumSepolia",
-    hash: "0xfc3a6c284974612332fb8e1ff2667a52e9c6415c7e9d23a96f00e1c174a6d87d",
+    hash: "0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782",
   },
   {
     label: "Gasless: settled for a wallet holding 0 ETH",
-    detail: "Exit #7, one signed order, the relayer paid the gas",
+    detail: "Exit #13, one signed order; this site's relayer paid the gas",
     chain: "arbitrumSepolia",
-    hash: "0x06a3978b263d3f9743b3a2fb30fa81889b7732b3ea5d2ca668589975dca1b3eb",
+    hash: "0x7a9d6168e9bc171af415495716e600f50c91df6a0bd85e8bdcaf8ce3cfb1658f",
   },
   {
     label: "The keeper executed the exit through the Outbox",
-    detail: "Permissionless: anyone can run it after the challenge period",
+    detail: "Exit #6: permissionless, anyone can run it after the challenge period",
     chain: "arbitrumSepolia",
     hash: "0xd44532020be37c7f2e72fbcff55fd1912c3a8de27a8105e5453252f1696ebecb",
   },
   {
     label: "The vault collected face value",
-    detail: "The discount became LP yield: 19.00 → 19.015 USDG",
+    detail: "Exit #6 (v2 vault): the purchase discount became LP yield",
     chain: "arbitrumSepolia",
     hash: "0xd329b47b64202458c5f9513a562defd7777c6db2eb7031328348e615103cbfd9",
   },

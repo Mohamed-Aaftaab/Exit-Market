@@ -11,7 +11,7 @@ const STACK = [
   ["Outbox", "Merkle proofs"],
   ["Rollup", "Pending nodes + BOLD"],
   ["Orbit", "Live on Xai Testnet"],
-  ["Stylus", "Rust proof verifier"],
+  ["Stylus", "Rust verifier, benchmarked"],
 ] as const;
 
 const STEPS = [
@@ -25,7 +25,7 @@ const FEATURES = [
   {
     kicker: "On-chain",
     title: "Proof, not trust",
-    body: "Every check runs inside the seller's transaction, against Arbitrum's own contracts. No oracle, no committee, no multisig.",
+    body: "Every check runs inside the seller's transaction, against Arbitrum's own contracts. No oracle, no committee, and the market has no owner.",
     rows: [["Ownership", "getExternalCall"], ["Withdrawal", "leaf + Merkle path"], ["Root", "pending node / BOLD"], ["Unclaimed", "!Outbox.isSpent"]],
   },
   {
@@ -39,14 +39,14 @@ const FEATURES = [
     kicker: "Liquidity",
     title: "The wait becomes yield",
     body: "An ERC-4626 vault buys exits at a small discount and collects face value at confirmation. The discount accrues to LPs.",
-    rows: [["Vault", "ERC-4626 · USDG"], ["Pricing", "0.10% + 10% APR"], ["Risk", "node rejection only"]],
+    rows: [["Vault", "ERC-4626 · USDG"], ["Pricing", "0.10% + 10% APR"], ["Buyer risk", "a rejected node"]],
   },
 ] as const;
 
 const NUMBERS = [
   ["137", "pending BOLD assertions walked for a real Arbitrum One exit (mainnet fork)"],
-  ["1.37M", "gas for that whole ancestor walk"],
-  ["415", "tests: unit, fuzz, invariants, mainnet forks"],
+  ["1.1M", "gas for that whole ancestor walk, measured on a mainnet fork"],
+  ["420", "tests: unit, fuzz, invariants, exploit regressions, mainnet forks"],
   ["99.4%", "line coverage of the production contracts"],
 ] as const;
 
@@ -229,7 +229,7 @@ function Depth() {
         <Head
           eyebrow="Beyond the demo"
           title="Proven against mainnet"
-          lead="Arbitrum One runs BOLD, so the verifier walks real pending assertions. Four internal review rounds; every high-severity finding fixed with a regression test. Not a third-party audit."
+          lead="Arbitrum One runs BOLD, so the verifier walks real pending assertions. Five internal review rounds; every high-severity finding reproduced, fixed and covered by a regression test. Not a third-party audit."
         />
         <div className={styles.numbers}>
           {NUMBERS.map(([value, label], i) => (

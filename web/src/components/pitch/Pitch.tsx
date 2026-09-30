@@ -17,7 +17,7 @@ const TITLES = [
 ];
 
 const COMPETITORS: ReadonlyArray<[string, string, string, string]> = [
-  ["Exit Market", "Yes, per withdrawal", "Rollup commitments only", "Any, as deployed"],
+  ["Exit Market", "Yes, per withdrawal", "Rollup commitments only", "Any, once deployed for its gateways"],
   ["Native fast withdrawals", "Yes, if the chain opts in", "Validator committee", "Opt-in per chain"],
   ["Across", "No", "Relayers + UMA oracle", "None of the five"],
   ["Circle CCTP", "No", "Circle attestation", "USDC only, no L3s"],
@@ -28,7 +28,7 @@ const TECH: ReadonlyArray<[string, string]> = [
   ["Token bridge", "transferExitAndCall on the real parent gateways"],
   ["Outbox", "Leaves rebuilt byte for byte; NodeInterface proofs"],
   ["Orbit L3", "Live end to end on Xai Testnet"],
-  ["BOLD", "A real pending Arbitrum One exit, 137-deep chain, 1.37M gas (mainnet fork)"],
+  ["BOLD", "A real pending Arbitrum One exit proven over its real pending chain (mainnet fork, ~1.1M gas)"],
   ["Stylus", "The proof core in Rust, live, with an honest gas benchmark"],
   ["Rollup nodes", "Pending legacy nodes already commit to their send roots"],
 ];
@@ -163,7 +163,7 @@ function Mechanism() {
             </div>
           ))}
         </div>
-        <p className={styles.text}>No oracle. No multisig. No committee. The buyer&apos;s only risk is a rollup node being rejected, which the vault prices and writes off.</p>
+        <p className={styles.text}>No oracle, no committee, and the market has no owner. The buyer&apos;s risk is a pending rollup node being rejected, which the vault prices and writes off.</p>
       </Slide>
       <Slide n={8}>
         <p className="eyebrow">Gasless exits</p>
@@ -186,7 +186,7 @@ function Mechanism() {
 }
 
 function Evidence() {
-  const numbers = [["415", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["4", "internal review rounds"], ["0", "Slither high / medium"]];
+  const numbers = [["420", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["5", "internal review rounds"], ["0", "Slither high / medium"]];
   return (
     <>
       <Slide n={9}>
@@ -227,8 +227,9 @@ function Evidence() {
           ))}
         </div>
         <p className={styles.text}>
-          Round four found a critical bug in the first router deployment, a balance-delta theft path. It held no funds; we reproduced it, fixed
-          it and redeployed the same day. AI-assisted internal reviews, not a third-party audit.
+          Round four found a critical balance-delta bug in the first router; round five found the same pattern in the market and an owner key
+          that could allow a hostile gateway. Each was reproduced as an exploit test, fixed and redeployed; the live market now has no owner.
+          AI-assisted internal reviews, not a third-party audit.
         </p>
       </Slide>
     </>
@@ -240,7 +241,7 @@ function Market() {
     <>
       <Slide n={12}>
         <p className="eyebrow">Competition</p>
-        <h2 className={styles.title}>The only rescue for an exit in flight</h2>
+        <h2 className={styles.title}>Rescue an exit already in flight</h2>
         <div className={`${land.card} ${styles.scroll}`} tabIndex={0} role="region" aria-label="Competition table">
           <table className={styles.table}>
             <thead>

@@ -1,8 +1,8 @@
 # Test coverage and invariant evidence
 
-Date: 2026-09-30. Hardhat 3.18.0, solc 0.8.28 (viaIR, optimizer 200 runs), forge-std 1.10.0, EDR `cancun`.
-Result: **404 passing, 0 failing, 9 skipped** (the 9 skipped are the mainnet-fork tests, which need
-`FORK_TESTS=1` and network access and were left skipped).
+Date: 2026-10-01 (v3 contracts, after the round-5 fixes). Hardhat 3.18.0, solc 0.8.28 (viaIR, optimizer 200 runs), forge-std 1.10.0, EDR `cancun`.
+Result: **411 passing, 0 failing, 9 skipped** (the 9 skipped are the mainnet-fork tests, which need
+`FORK_TESTS=1` and network access; with it set, all 420 pass).
 
 ## Reproduce
 
@@ -31,17 +31,17 @@ branch coverage:
 
 ## Production contracts
 
-| Contract | Lines, unit + fuzz suites | Lines, full suite (with invariants) | Functions hit (derived) | Custom-error reverts named by a test |
+| Contract | Lines, unit + fuzz suites (v2, 2026-09-30) | Lines, full suite (v3, 2026-10-01) | Functions hit (derived, v2) | Custom-error reverts named by a test (v2) |
 |---|---|---|---|---|
-| `ExitMarket.sol` | 174/178 (97.75%) | 175/178 (98.31%) | 26/26 | 18/20 |
+| `ExitMarket.sol` | 174/178 (97.75%) | 177/180 (98.33%) | 26/26 | 18/20 |
 | `ExitIntentRouter.sol` | 86/86 (100%) | 86/86 (100%) | 10/10 | 14/14 |
-| `ExitVault.sol` | 131/131 (100%) | 131/131 (100%) | 27/27 | 16/16 |
+| `ExitVault.sol` | 131/131 (100%) | 137/137 (100%) | 27/27 | 16/16 |
 | `verifiers/BoldRootVerifier.sol` | 48/48 (100%) | 48/48 (100%) | 6/6 | 6/6 |
 | `verifiers/LegacyRootVerifier.sol` | 7/7 (100%) | 7/7 (100%) | 2/2 | 0/0 |
 | `libraries/ExitLeaf.sol` | 20/20 (100%) | 20/20 (100%) | 4/4 | 2/2 |
 | `libraries/ExitAccrual.sol` | 4/4 (100%) | 4/4 (100%) | 1/1 | 0/0 |
 | `libraries/ExitKeys.sol` | 1/1 (100%) | 1/1 (100%) | 1/1 | 0/0 |
-| **Production total** | **471/475 (99.16%)** | **472/475 (99.37%)** | **77/77** | **56/58** |
+| **Production total** | **471/475 (99.16%)** | **480/483 (99.38%)** | **77/77** | **56/58** |
 
 Not counted above: `contracts/bench/ExitLeafBench.sol` (0%, a benchmark twin deployed only on Arbitrum Sepolia by
 `scripts/stylus/bench.ts`, no unit test) and the test scaffolding (mocks, fixtures, handlers).
@@ -53,9 +53,9 @@ are exactly the two custom errors no test names:
 
 | Line | Statement | Why unreachable |
 |---|---|---|
-| 239 | `if (owner_ != address(this)) revert ExitNotHeld();` in `_verifyExit` | The hook runs after the gateway redirected the exit to the market; only a hostile allowlisted gateway could call it otherwise |
-| 354 | same check in `_requireLive` | A listed exit is owned by the market by construction |
-| 298 | `if (_listings[id].status == Status.Listed) revert ListingExists(id);` in `_list` | While Listed the market owns the exit, so the gateway refuses a second redirect (`hostileRelistWhileListed` in the market invariant campaign asserts exactly that) |
+| 242 | `if (owner_ != address(this)) revert ExitNotHeld();` in `_verifyExit` | The hook runs after the gateway redirected the exit to the market; only a hostile allowlisted gateway could call it otherwise |
+| 364 | same check in `_requireLive` | A listed exit is owned by the market by construction |
+| 301 | `if (_listings[id].status == Status.Listed) revert ListingExists(id);` in `_list` | While Listed the market owns the exit, so the gateway refuses a second redirect (`hostileRelistWhileListed` in the market invariant campaign asserts exactly that) |
 
 One further line, `if (price == 0) revert ZeroPrice();` in `_sellToBuyer`, is not reached by the unit suites but is
 by the invariant campaign (`hostile:sellTerms`), which is why the full-suite figure is one line higher.
@@ -99,7 +99,7 @@ redirected without hook data, time travel. Hostile: buy/cancel/settle a non-list
 exit, buy an expired listing or above the buyer's max price, re-list while the market owns the exit, fee above the
 cap, fee change by a stranger, instant sale below the seller's minimum or paying zero.
 
-### ExitIntentRouter (with the vault as the only buyer, as enforced since the re-audit fix)
+### ExitIntentRouter (with the vault as the only buyer, as enforced since the round-4 fix)
 
 | Invariant | Asserts |
 |---|---|
@@ -136,7 +136,7 @@ invariant file was run with the committed campaign sizes. **All 17 mutants were 
 | M9 `withdrawFees` does not reset `accruedFees` | status/hostile, balance = fees + escrow, fee conservation, ledger |
 | R1 relayer fee is never paid | hostile/behave, router balance |
 | R2 buyer allowlist removed | hostile/behave |
-| R3 `reclaim` allowed after Outbox execution (the re-audit H1 bug) | hostile/behave, router balance, ownership |
+| R3 `reclaim` allowed after Outbox execution (the round-4 H1 bug) | hostile/behave, router balance, ownership |
 | R4 `recoverExecuted` never marks the item recovered | hostile/behave, router balance |
 | R5 seller is also paid the relayer's fee | hostile/behave, router balance |
 | R6 any valid signer accepted, not only the exit's sender | hostile/behave, value split, router balance, ownership |
@@ -147,10 +147,10 @@ invariant file was run with the committed campaign sizes. **All 17 mutants were 
 
 | Kind | Count |
 |---|---:|
-| Unit / scenario tests | TOTAL_UNIT |
+| Unit / scenario tests | 377 |
 | Property fuzz tests (`testFuzz_*`, 256 runs each unless stated) | 17 |
 | Invariant campaigns (7 market + 5 router + 5 vault) | 17 |
-| **Total passing** | **404** |
+| **Total passing** | **411** |
 | Skipped (mainnet fork, `FORK_TESTS` unset) | 9 |
 
 Of these, 21 are new in this evidence pack: the 12 market and router invariants and 9 gas-budget tests

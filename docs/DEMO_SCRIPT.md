@@ -10,7 +10,7 @@ Every beat below maps to one of those.
 | 0:45–1:30 | App: withdrawals list → select → price breakdown → **proof trace** ticking green | "Exit Market proves the exit on-chain *before* the challenge period ends: it rebuilds your withdrawal leaf, checks it against the Outbox tree committed by a *pending* rollup node, and confirms nobody claimed it." Point at node #, index, root. |
 | 1:30–1:55 | Click **Get X USDG now** → one signature → Arbiscan tx | "One signature. The vault pays me USDG now and becomes the owner of my withdrawal." (USDG, PMF) |
 | 1:55–2:20 | Vault panel: total assets, APR pricing | "LPs earn the discount: 10% APR on the time left to confirmation, recognized only when the exit actually pays out." |
-| 2:20–2:45 | `docs/SECURITY.md` table + terminal `npm run test:fork` passing | "We audited it with specialised review agents, found and fixed two high-severity bugs — including a spent-index aliasing drain — and the fork tests run against the real Xai gateway, rollup and Outbox." (contract quality) |
+| 2:20–2:45 | `docs/SECURITY.md` table + terminal `npm run test:fork` passing | "Five internal review rounds with specialised agents (not a third-party audit): every high-severity finding was reproduced as an exploit test and fixed, and the fork tests run against the real Xai gateway, rollup and Outbox." (contract quality) |
 | 2:45–3:00 | Architecture diagram from README | "Works for every Orbit L3 on Arbitrum One today; a BOLD verifier is next. Exit Market: your withdrawal, liquid now." |
 
 Record at 1080p; keep the wallet in the same browser profile; pre-run the withdrawal ~20 min earlier so it is

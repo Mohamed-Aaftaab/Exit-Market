@@ -44,7 +44,7 @@ Sources:
   ETH becomes sellable if it is withdrawn as WETH through the WETH gateway, which we support.
 - **Chains with fast withdrawals enabled** have a window of about 15–40 minutes. Exit Market adds little there.
   The market is Arbitrum One → Ethereum, plus the L3s that haven't enabled it.
-- **Not a third-party audit.** Security came from three internal review rounds (AI-assisted, specialised review
+- **Not a third-party audit.** Security came from five internal review rounds (AI-assisted, specialised review
   agents), Slither, fuzz and invariant tests, and fork tests against real contracts.
 
 ## Prior art

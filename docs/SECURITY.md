@@ -1,4 +1,4 @@
-# Security model and audit log
+# Security model and review log
 
 Exit Market lets anyone buy an Arbitrum withdrawal that has not finished its challenge period.
 The gateway primitive it builds on (`transferExitAndCall`) **does not validate the exit** — the
@@ -58,6 +58,26 @@ and `web/src/lib/relayGuard.test.ts`.
 | R4-R2–R4 | Low–Medium | No rate limit or dedupe; nonce races; `JSON null` crash; body read before size check | Fixed: per-IP limit, in-flight dedupe, one settlement at a time, strict parsing |
 | R4-L1 | Low | Router exits share `initialDestination = router`, so a *bogus pending root* could claim a future `exitNum` | Accepted residual (below) |
 
+### Round 5 (2026-10-01): full-codebase review, fixed and redeployed as v3
+
+Four reviewers in parallel (contracts, architecture/decentralization, TypeScript/relayer, product claims). Both
+High findings were reproduced as exploits before the fix; regressions in `Round5Exploits.t.sol`. The market,
+vault and router were redeployed as **v3** (addresses in the README); v1/v2 stay listed under `history` in
+`deployments/arbitrumSepolia.json`.
+
+| ID | Severity | Finding | Status |
+|---|---|---|---|
+| R5-H1 | **High** | `_sellToBuyer` paid the seller the market's USDG *balance delta* around `buyer.buyExit()`. The buyer is chosen by the seller, so it could execute a **listed** exit through the Outbox mid-call (paying the market) and have that victim's payout counted as its own price | Fixed: the market **pulls exactly the price the buyer reports** (`transferFrom`), so no other inflow can be counted; the vault approves instead of transferring. `test_H1_*` |
+| R5-H2 | **High** | A single owner key could `allowGateway` a hostile gateway (one contract posing as gateway, inbox, bridge, rollup and outbox) and fake exits into the vault, draining its idle USDG. Contradicted "the owner cannot move funds" | Fixed: the v3 deployment allows Xai's two real gateways and then **renounces market ownership** (`owner() == 0`), so nobody can add a gateway, change the fee or pause. `test_H2_*` |
+| R5-M1 | Medium | Dust exits could fill all 32 vault slots for ~32 base units, blocking sales (router included) | Fixed: `minExitAmount` (default one whole token, never zero). `test_M1_*` |
+| R5-M2 | Medium | Seller slippage bound `minPayout` was checked against the gross price, so a fee change could front-run a sale | Fixed: checked **net of the fee**; the fee is also immutable now (ownership renounced) |
+| R5-M3 | Medium | Relayer returned an empty revert reason and 422 for infrastructure failures; clients retried failed orders forever | Fixed: custom errors decoded from generated ABIs; "done elsewhere" detected before any gas is spent; 422 only for the order's own faults, 502 for the relayer's, 202 while waiting for a node or vault liquidity |
+| R5-M4 | Medium | Gasless flow could strand an exit (withdrawal sent before the order was signed; amounts below the fee accepted) | Fixed: minimum amount checked before the withdrawal; the exit is saved before signing and can be signed later; store merges instead of overwriting |
+| R5-L1 | Low | Proofs used the newest node instead of the earliest pending one covering the withdrawal (worse price) | Fixed: `findCoveringNode` picks the earliest unresolved covering node |
+
+Not changed (documented below): legacy pending nodes are accepted without a rival check (the BOLD verifier has
+one); fee-on-transfer listing tokens; an exit redirected to the market with empty hook data has no owner record.
+
 ## Vault LP-fairness findings H1-H3 (fixed; regression tests `test_H1_/H2_/H3_*` in Exploits.t.sol)
 
 These affected fairness **between vault LPs**, never sellers, buyers or market funds. No drain, no insolvency,
@@ -73,8 +93,8 @@ of four planted mutations).
 
 Residual risks of these fixes (accepted):
 
-- **Slot griefing.** Anyone can fill the 32 open slots with dust exits and make the vault refuse sales until they
-  are collected (about one challenge period). Nothing is lost; a `minExitAmount` parameter is the follow-up.
+- **Slot griefing.** Filling the 32 open slots now costs 32 × `minExitAmount` (one USDG each by default), locked
+  for a challenge period; the vault refuses sales until those exits are collected. Nothing is lost.
 - **Rejection is priced when observable on L1**, not when fraud becomes provable; `SHARE_LOCK` bounds early exits.
 - **Unrealized discount is at risk.** NAV includes the accrued discount before the tokens arrive.
 - **Rejection-check failure degrades to "carry as before"** instead of bricking deposits and redemptions.
@@ -84,20 +104,32 @@ Residual risks of these fixes (accepted):
 
 - **Optimistic-rollup risk on pending proofs.** A listing proven against a node that is later rejected may be
   fake; buyers see `pending`/`nodeNum`, `buy` re-checks liveness, and the vault can cap size or refuse pending
-  exits (`acceptPending`). On L3s with allowlisted validators this requires a malicious validator.
-- **Owner trust.** The owner allowlists gateways and picks the root verifier; it cannot move user funds or
-  change a gateway's sources after first allow. Fee is capped at 2% and snapshotted per listing.
+  exits (`acceptPending`). On L3s with allowlisted validators (Xai Testnet is one) this requires a malicious
+  validator, the same party the chain's own bridge trusts until confirmation. `LegacyRootVerifier` does not yet
+  refuse a pending node that has a rival sibling (the BOLD verifier does); that is the next verifier change.
+- **Admin keys.** The live market has **no owner** (renounced in the v3 deployment, tx in
+  `deployments/arbitrumSepolia.json`): its gateways, their verifiers and the 0.25% fee are frozen. The router
+  has no owner. The vault's owner can only call `setParams`/`setMinExitAmount` (base fee ≤ 5%, APR ≤ 50%, exit
+  size limits, accept pending exits): it can make the vault stop buying or price less generously, bounded by
+  each seller's `minPayout`/`minProceeds`, but it cannot move deposits or exits.
 - **WETH gateway exits** (leaf callvalue = amount) are verified by trying `value = amount` after `value = 0`: safe
   because a gateway that never sends callvalue can never have such a leaf.
 - **BOLD rollups** (Arbitrum One/Nova, Arbitrum Sepolia, new Orbit chains) are verified by `BoldRootVerifier`: an
   assertion's preimage is registered once, and a pending root is accepted only if every pending ancestor up to
   the latest confirmed one is registered and has no rival child. Proven on an Ethereum mainnet fork against a
-  real pending Arbitrum One withdrawal and its real 137-deep pending chain (1.37M gas for the walk).
+  real pending Arbitrum One withdrawal and its real pending chain (137 assertions deep when recorded; the walk cost
+  1.37M gas on 2026-09-29 and 1.10M on 2026-10-01 as ancestors confirmed). Rejection is not automatic for BOLD:
+  someone must register the rival chain and call `markRejected` before the vault values the exit at zero; the
+  keeper does not do this yet, and no BOLD gateway is allowed on the live market.
 - **Bogus pending roots and the router (R4-L1).** Router exits all share `initialDestination = router`, so a root
   forged by a validator could redirect a *future* router exit number, not just the forger's own. It needs the
   same malicious-validator assumption as any pending proof; confirmed-only mode would remove it at the cost of
   instant gasless exits.
-- **Unsupported, fail-closed:** fee-on-transfer exit tokens; native ETH and custom-gas-token withdrawals (they
-  do not go through the token gateway, so they are not transferable exits).
+- **Unsupported:** native ETH and custom-gas-token withdrawals (they do not go through the token gateway, so they
+  are not transferable exits). The payment token must not take a transfer fee (a short payment reverts
+  `PaymentShortfall`). Listings of a fee-on-transfer *exit* token are not blocked: `settle` pays the full amount
+  from the market's pool of that token, so a taxed token's shortfall would fall on other sellers of the same token.
+- **Empty hook data.** `transferExitAndCall(…, market, "", "")` with no hook data hands the exit to the market
+  without a listing, and the tokens are then stuck. The app and scripts always send hook data.
 - **Outbox upgrades.** Sources are frozen per gateway; a rollup outbox swap would require a new market deployment.
 - **Vault liquidity.** Withdrawals are limited to idle USDG; outstanding exits return liquidity at confirmation.

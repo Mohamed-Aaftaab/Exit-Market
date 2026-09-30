@@ -1,93 +1,91 @@
 # Exit Market — Design
 
-## Since v0.2 (current state; see docs/SECURITY.md for every review round)
-- **WETH exits are supported**: the verifier retries the leaf with `value = amount` (WETH gateways send callvalue),
-  which is safe because a gateway that never sends callvalue can never produce such a leaf. The v0.2 note below
-  is historical.
-- **BOLD rollups** (Arbitrum One/Nova, Arbitrum Sepolia): `verifiers/BoldRootVerifier.sol` registers assertion
-  preimages and accepts a pending root only when every pending ancestor up to the latest confirmed assertion is
-  registered and unchallenged.
-- **Gasless exits**: `ExitIntentRouter` owns router-destined withdrawals and settles one signed EIP-712 order into
-  the vault it is bound to.
-- **Vault v2**: bounded open set valued live (rejected exits count 0), linear discount accrual, one impairment
-  window per rejected root.
-- A **permissionless keeper** (`scripts/keeper.ts`) writes off rejected exits, executes confirmed ones through the
-  Outbox and collects them into the vault.
-
-## v0.2 changes (architect review, each claim re-verified against source)
-- Legacy rollups do NOT delete rejected nodes (`RollupCore._rejectNextNode` only bumps
-  `_firstUnresolvedNode`). Pending-root proofs now also require
-  `firstUnresolvedNode() <= nodeNum <= latestNodeCreated()`; re-checked at buy time.
-- Once a node confirms, anyone can execute the exit and the tokens land in the market.
-  Listings get a `settle` path: if `isSpent(index)`, the market pays the tokens out instead of redirecting.
-- `extraData` is hard-coded to `""` (child gateway enforces `EXTRA_DATA_DISABLED`).
-- WETH gateways send `value = amount` in the leaf; the verifier uses `value = 0`, so WETH exits are
-  unsupported (fail closed).
-- Gateway allowlisting snapshots `(childGateway, outbox, rollup)` so proxy upgrades cannot silently
-  swap verification sources.
-- The USDG bid book is replaced by **ExitVault** (ERC-4626 on USDG). It buys USDG exits in the same
-  transaction at `face × (1 − rate × timeToConfirm)` and earns the discount. That makes instant
-  exit a yield product for LPs; it needs no oracle because payout token = asset.
-- Layout: `libraries/ExitLeaf.sol`, `verifiers/LegacyRootVerifier.sol` (behind `IRootVerifier`, BOLD
-  later), `ExitRegistry.sol`, `ExitMarket.sol`, `ExitVault.sol`.
+Current state: **v3** (after the round-5 review). Every review round, finding and residual risk is in
+[`SECURITY.md`](SECURITY.md).
 
 ## Problem
-Withdrawing tokens from an Arbitrum Orbit L3 (Xai, ApeChain, RARI, Sanko, EDU…) to its parent chain
-(Arbitrum One) through the canonical token bridge locks funds for the challenge period:
-**45,818 L1 blocks ≈ 6.4 days** on most mainnet L3s (verified from Arbitrum's orbitChainsData.json).
 
-Arbitrum's gateways shipped a solution that has never been used: **tradeable exits**.
-`L1ArbitrumExtendedGateway.transferExitAndCall(exitNum, initialDestination, newDestination, "", data)`
-lets the current owner of a pending withdrawal redirect it and call `onExitTransfer` on the receiver.
-`WithdrawRedirected` has been emitted **zero times ever** on Arbitrum One/Nova L1 gateways and on the
-Xai Testnet gateways on Arbitrum Sepolia.
+Withdrawing tokens from an Arbitrum chain to its parent through the canonical token bridge locks them for the
+challenge period: **45,818 L1 blocks ≈ 6.4 days** on Arbitrum One and most mainnet Orbit chains (Xai, ApeChain,
+RARI, Sanko, EDU…).
 
-Why nobody used it: the gateway **does not verify that the exit exists, its token/amount, or that it
-was not already executed** (source comment: "It is assumed the `_exitNum` is validated off-chain").
-A buyer cannot trust a seller.
+Arbitrum's gateways shipped a way out that nobody used: **tradeable exits**.
+`L1ArbitrumExtendedGateway.transferExitAndCall(exitNum, initialDestination, newDestination, "", data)` lets the
+current owner of a pending withdrawal redirect it and call `onExitTransfer` on the receiver. `WithdrawRedirected`
+had been emitted zero times on the Arbitrum One and Nova L1 gateways (reproduce:
+[`research/stranded/redirects.mjs`](../research/stranded/redirects.mjs)).
 
-## Core idea: trustless exit verification on the parent chain
-The market contract verifies, on-chain and **before the challenge period ends**, that an exit is real:
+Why: the gateway **does not verify that the exit exists, its token or amount, or that it was not already
+executed** (source comment: "It is assumed the `_exitNum` is validated off-chain"). A buyer cannot trust a seller.
 
-1. **Ownership** — `gateway.getExternalCall(exitNum, initialDestination, "")` returns the market,
-   so the market is the current owner.
-2. **Content** — rebuild the L2→L1 leaf exactly as the child gateway produced it:
-   `data = finalizeInboundTransfer(l1Token, from, initialDestination, amount, abi.encode(exitNum, extraData))`
-   `item = outbox.calculateItemHash(childGateway, parentGateway, l2Block, l1Block, l2Timestamp, 0, data)`
-   and check `outbox.calculateMerkleRoot(proof, index, item) == sendRoot`.
-   `exitNum` and `parentGateway` come from the gateway call itself (not from the seller).
-3. **Root authenticity** — either
-   - confirmed: `outbox.roots(sendRoot) != 0`, or
-   - **pending assertion**: `rollup.getNode(nodeNum).confirmData == keccak256(blockHash, sendRoot)`
-     (verified against live Xai Testnet nodes 61780/61781).
-4. **Not already executed** — `!outbox.isSpent(index)` with `index < 2**proof.length`
-   (the Outbox enforces the same minimal-path rule; without it a padded index would make
-   `isSpent` read the wrong slot → double-spend).
-   Once the exit is redirected to the market, any later execution pays the market-controlled
-   destination, so "unspent at listing time" is sufficient.
+## Core idea: verify the exit on the parent chain, before it confirms
 
-Verification sources are **derived from the gateway**, not configured:
-`gateway.inbox() → inbox.bridge() → bridge.rollup() → rollup.outbox()`.
-The owner can only allowlist gateways (verified on Arbitrum Sepolia for Xai Testnet).
+`ExitMarket.onExitTransfer` runs inside the seller's `transferExitAndCall` and proves:
+
+1. **Ownership**: `gateway.getExternalCall(exitNum, initialDestination, "")` returns the market. `exitNum` and
+   the gateway come from the gateway call itself, never from the seller.
+2. **Content**: the Outbox item is rebuilt exactly as the child gateway produced it
+   (`finalizeInboundTransfer(l1Token, from, initialDestination, amount, abi.encode(exitNum, ""))`, hashed with
+   child gateway, parent gateway, L2/L1 block, timestamp and value; `value = amount` is retried for WETH-style
+   gateways) and folded through the Merkle proof to `sendRoot`, with `index < 2**proof.length` so the spent-bitmap
+   slot is the one the Outbox would use.
+3. **Root authenticity** (`IRootVerifier`, one per gateway, frozen): confirmed in `Outbox.roots`, or pending:
+   - **legacy rollups** (`LegacyRootVerifier`): an unresolved node (`firstUnresolvedNode ≤ n ≤ latestNodeCreated`)
+     with `getNode(n).confirmData == keccak256(blockHash, sendRoot)`; rejected legacy nodes are not deleted, hence
+     the range check, repeated at buy time;
+   - **BOLD** (`BoldRootVerifier`): assertion preimages registered once (permissionless), and a pending root is
+     accepted only if every pending ancestor up to the latest confirmed assertion is registered and has no rival.
+4. **Not yet executed**: `!Outbox.isSpent(index)`. After the redirect, any later execution of this item pays a
+   destination the market controls.
+
+Verification sources are derived from the gateway (`inbox → bridge → rollup → outbox`, `bridge.allowedOutboxes`)
+and frozen with the verifier when the gateway is allowed.
+
+## Components
+
+| Piece | Role |
+|---|---|
+| `ExitMarket` | the hook; listings (`list`/`buy`/`cancel`/`settle`) and one-transaction sale to any `IExitBuyer`. Payment is **pulled** from the buyer (`transferFrom` of the price it reports), never measured as a balance change; the seller's `minPayout` is net of the fee. On the live deployment ownership is renounced |
+| `ExitVault` | ERC-4626 USDG vault and the default buyer: prices an exit at `face − baseFee − APR × timeToDeadline`, carries it at cost plus linearly accrued discount, values it at zero if its node is rejected, collects face value after execution. At most 32 open exits; exits below `minExitAmount` refused |
+| `ExitIntentRouter` | gasless exits: users withdraw to the router, sign an EIP-712 `SellOrder` (buyer, minimum proceeds, relayer fee, deadline); anyone settles it. `reclaim` and `recoverExecuted` return an exit or its tokens to the proven sender |
+| `scripts/keeper.ts` | permissionless: executes confirmed exits through the Outbox, collects them into the vault, writes off rejected ones |
+| `web/` | desk (sell, gasless, LP deposit/withdraw), live Explorer, relayer API (`/api/relay`) |
+| `scripts/lib/` | the TypeScript both share: proof builder (earliest pending node covering the withdrawal), hook encoding, relayer, ABIs generated from the compiled contracts |
 
 ## Flows
-- **List**: seller calls `gateway.transferExitAndCall(exitNum, initialDest, market, "", abi.encode(LIST, initialDest, proof, params))`
-  → hook verifies and records a listing (price in USDG or any ERC20, expiry).
-  `buy(id)` pays the seller (minus fee) and redirects the exit to the buyer. `cancel`/`reclaim` return it.
-- **Instant sell into a bid** (one signature): bidders escrow USDG with
-  `(gateway, l1Token, rate, budget, minAmount, expiry)`. Seller transfers the exit with `FILL_BID`;
-  hook verifies, redirects the exit to the bidder and pays the seller from escrow — atomically.
-- **Resale**: the buyer is now the current destination and can list again (the leaf is still keyed to
-  the original `initialDestination`).
 
-## Trust / risk model
-- Pending-node proofs inherit optimistic-rollup risk: if the assertion is later rejected (invalid
-  state), the exit may not exist. Listings record `nodeNum` so buyers can price this.
-- Owner can allowlist a malicious "gateway"; bids are pinned to a specific gateway address and
-  listings expose it, so a bad allowlist entry cannot touch bids on genuine gateways.
-- Pre-BOLD rollups supported now (Xai Testnet and most L3s). BOLD adapter is roadmap.
+- **Instant sale**: `gateway.transferExitAndCall(exitNum, initialDest, market, "", abi.encode(SELL_TO_BUYER, claim,
+  abi.encode(vault, minPayout)))`. The market proves the exit, asks the vault for its price, pulls it, redirects
+  the exit to the vault and pays the seller minus the 0.25% fee, all in one transaction.
+- **Gasless sale**: withdraw on the child chain to the router, sign one order; a relayer calls
+  `router.settle(claim, order, signature)`, which runs the instant sale with the router as seller and forwards
+  proceeds minus the relayer fee to the signer (the proven child-chain sender).
+- **Listing**: the same hook with `LIST` records a fixed-price listing; `buy` pays the seller, redirects the exit
+  to the buyer; the buyer can list it again. If the exit executes while listed, `settle` forwards the tokens
+  (only after proving the spent slot holds this item under a confirmed root).
+- **Settlement**: after the challenge period anyone executes the exit through the Outbox; the owner (vault or
+  buyer) receives the tokens; the vault's `collect` books them once `isExitPaidOut` proves it.
+
+## Trust model
+
+- Validity: only the rollup's own commitments (Outbox proof against a pending node or assertion, spent bitmap).
+- No admin can move funds: the live market has no owner; the router has no owner; the vault owner tunes pricing
+  inside hard caps only.
+- Buyer risk: a pending node being rejected. The vault prices time to confirmation, values rejected exits at
+  zero immediately and keeps the record so a genuine exit re-committed by the honest node can still be collected.
+
+## History
+
+- **v0.2**: rejected legacy nodes are not deleted → range check; `settle` path for listings executed while held;
+  source snapshot per gateway; the escrowed bid book was replaced by the vault.
+- **v1/v2 (2026-09-29/30)**: gasless router, BOLD verifier, WETH-style leaves, vault LP-fairness fixes, router
+  balance-delta fix (R4-C1).
+- **v3 (2026-10-01)**: market pulls payment (R5-H1), ownership renounced at deployment (R5-H2), vault
+  `minExitAmount` (R5-M1), `minPayout` net of fee (R5-M2).
 
 ## Deployment (hackathon)
-- Parent: Arbitrum Sepolia (421614). L3: Xai Testnet (37714555429, ~15-min node cadence,
-  confirmPeriodBlocks = 150 → full lifecycle demo in < 1 h).
-- Payment token: USDG on Arbitrum Sepolia `0xFFC95faa3d63Cde504a05B567C600B78C0b41892`.
+
+- Parent: Arbitrum Sepolia (421614). Child: Xai Testnet (37714555429), a pre-BOLD Orbit L3 with a node about every
+  15 minutes and `confirmPeriodBlocks = 150` (about 30 minutes), so the whole lifecycle fits in an hour.
+- Payment token: Paxos USDG on Arbitrum Sepolia `0xFFC95faa3d63Cde504a05B567C600B78C0b41892`.
+- Addresses: [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json).

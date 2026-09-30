@@ -10,7 +10,7 @@
     },
     {
       "id": "02-stakes",
-      "visual": "3D shot 1 continues; 2D counters: $51M in 30 days, $10.2M waiting, $5.05M never claimed",
+      "visual": "3D shot 1 continues; 2D counters: $51M in 30 days, $10.2M waiting, $5.06M never claimed",
       "text": "In thirty days, fifty-one million dollars in tokens left Arbitrum One this way. On the day we measured, ten million dollars sat in the challenge window, doing nothing. And over five million dollars finished the wait, and was never claimed at all."
     },
     {
@@ -21,7 +21,7 @@
     {
       "id": "04-proof",
       "visual": "3D shot 3: Merkle tree; the path lights from your leaf to the root of a pending rollup node; three checks",
-      "text": "Exit Market fixes that on chain. It rebuilds your withdrawal, proves it sits in the send root of a rollup node that is still pending, and checks that nobody has claimed it. No oracle. No multisig. Only Arbitrum's own commitments."
+      "text": "Exit Market fixes that on chain. It rebuilds your withdrawal, proves it sits in the send root of a rollup node that is still pending, and checks that nobody has claimed it. No oracle. No committee. The market has no owner. Only Arbitrum's own commitments."
     },
     {
       "id": "05-sale",
@@ -45,8 +45,8 @@
     },
     {
       "id": "09-depth",
-      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, 1.37M gas); Stylus verifier; 336 tests, audit rounds",
-      "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over three hundred tests, four rounds of security review, and every high severity finding fixed."
+      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, about 1.1M gas); Stylus verifier; 419 tests, five review rounds",
+      "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over four hundred tests, five rounds of security review, and every high severity finding reproduced and fixed."
     },
     {
       "id": "10-close",

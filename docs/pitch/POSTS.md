@@ -1,9 +1,8 @@
-# Launch posts (drafts — post them yourself; fill the [links])
+# Launch posts (drafts — post them yourself)
 
 Recheck each post's length in the X composer. Handles: @arbitrum, @OffchainLabs, @HackQuest_.
 
-Links to fill in: live app https://exit-market-gamma.vercel.app (desk `/app`, Explorer `/explorer`, deck `/pitch`);
-the repo and demo video links once they exist.
+Only the demo video link is still a placeholder ([video]); fill it once uploaded.
 
 ## X thread
 
@@ -13,7 +12,7 @@ Leave Arbitrum through the canonical bridge and your tokens sit for 6.4 days.
 
 Arbitrum's token gateway has had a hook to sell a pending withdrawal for years. On the Arbitrum One and Nova mainnet gateways it had never been used.
 
-We made it safe to use: Exit Market [demo link]
+We made it safe to use: Exit Market https://exit-market-gamma.vercel.app
 ```
 
 **2**
@@ -22,7 +21,7 @@ The scale: ~$51M in token withdrawals left Arbitrum One for Ethereum in 30 days.
 
 And ~$5M of exits finished the wait but were never claimed.
 
-Method + data: [repo link]
+Method + data: https://github.com/Mohamed-Aaftaab/Exit-Market/tree/main/research/stranded
 ```
 
 **3**
@@ -51,11 +50,11 @@ No gas on the parent chain? Withdraw to our router, sign once, and a relayer set
 **6**
 ```
 Live on Arbitrum Sepolia with Xai Testnet (Orbit L3):
-• a 10 USDG exit sold in one signature
+• exits sold in one signature while still pending
 • a gasless exit from a wallet with 0 ETH
 • the keeper executed, the vault realized yield
 
-Txs: [sale] [gasless] [collect]
+Txs: https://sepolia.arbiscan.io/tx/0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782 · https://sepolia.arbiscan.io/tx/0x1bc30a32312d2d1534233aa12fed7ae6e134fea619302138a3d3fd773743a57a · https://sepolia.arbiscan.io/tx/0x7d817f5894c4a831c62e65c580c9a114107d9f5b3a5fc034191eb4745baf91f3
 ```
 
 **7**
@@ -69,7 +68,7 @@ The Merkle verifier also runs in Rust on Stylus.
 ```
 Prior art: Moosavi, Salehi, Goldman & Clark, AFT 2023. They showed tradeable exits on a modified Nitro. Exit Market runs on the bridge as deployed.
 
-Try it: [app URL] · Code: [repo]
+Try it: https://exit-market-gamma.vercel.app · Code: https://github.com/Mohamed-Aaftaab/Exit-Market
 
 Built for @HackQuest_ Open House Singapore · @arbitrum @OffchainLabs
 ```
@@ -85,7 +84,7 @@ Live on Arbitrum Sepolia + Xai Testnet: real sales, a gasless exit from a wallet
 
 Feedback wanted: which chain and token would you sell first on mainnet?
 
-Demo: [video] | App: [URL] | Code: [repo]
+Demo: [video] | App: https://exit-market-gamma.vercel.app | Code: https://github.com/Mohamed-Aaftaab/Exit-Market
 ```
 
 ## HackQuest submission summary (≤120 words)

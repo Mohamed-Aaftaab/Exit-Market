@@ -103,9 +103,14 @@ The invariant suites are not part of the gas figures; for scale, the full suite 
 | Full listing of a real Arbitrum One exit through the real L1 gateway | 2,506,807 | **1,755,514** | 751,293 (-30.0%) |
 
 Both savings are the same 751,293 gas, i.e. the ancestor-walk optimisation in `BoldRootVerifier` accounts for
-the whole difference. The fork tests live in `contracts/test/fork/ArbOneBoldFork.t.sol` and need network
-access (`FORK_TESTS=1 npx hardhat test solidity --grep arbOne`); they are skipped by default and were not run
-for this report.
+the whole difference. Those figures were measured on 2026-09-29, when the fixture's withdrawal sat under 137
+pending assertions.
+
+The fork tests follow mainnet's latest block, and the pending chain shortens as ancestors confirm. Re-run on
+2026-10-01 (v3 contracts): **1,099,457** gas for `verifyRoot` and **1,488,837** for the full listing. Once the
+fixture's own assertion confirms (about 2026-10-05) the tests skip with a message pointing at
+`scripts/dev/makeArbOneFixture.ts`, which records a fresh pending withdrawal. Run them with
+`FORK_TESTS=1 npx hardhat test solidity --grep arbOne`.
 
 ## 5. Stylus vs Solidity Merkle verifier
 
