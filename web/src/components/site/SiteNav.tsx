@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { APP_NAME } from "@/lib/format";
+import { HeaderBar } from "./HeaderBar";
 import { MobileMenu } from "./MobileMenu";
 import { NAV, type PageId } from "./nav";
 import styles from "./site.module.css";
@@ -22,11 +23,12 @@ export function LogoMark() {
 
 /**
  * The floating header every page shares: logo disc, white pill nav with the three-dot active marker, and a dark
- * pill on the right. `action` replaces the default "Launch app" pill (the desk puts its wallet button there).
+ * pill on the right. `action` replaces the default "Launch app" pill (the desk puts its wallet button there);
+ * `isOverHero` keeps the header bare while the landing's video hero is behind it.
  */
-export function SiteNav({ active, action }: { active: PageId; action?: ReactNode }) {
+export function SiteNav({ active, action, isOverHero }: { active: PageId; action?: ReactNode; isOverHero?: boolean }) {
   return (
-    <div className={styles.bar}>
+    <HeaderBar isOverHero={isOverHero}>
       <header className={styles.header}>
         <Link href="/" className={styles.logo} aria-label={`${APP_NAME} home`}>
           <LogoMark />
@@ -52,6 +54,6 @@ export function SiteNav({ active, action }: { active: PageId; action?: ReactNode
         )}
         <MobileMenu active={active} />
       </header>
-    </div>
+    </HeaderBar>
   );
 }

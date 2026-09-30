@@ -10,7 +10,25 @@
   padding: clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px) 0;
   pointer-events: none;
 }
+/* Backdrop behind the floating header, faded in once the page scrolls (HeaderBar sets data-scrolled). */
+.bar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -30px 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.86) 55%, transparent 100%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 62%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.bar[data-scrolled="true"]::before {
+  opacity: 1;
+}
 .header {
+  position: relative; /* above the backdrop */
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -93,7 +93,10 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await sellButton.waitFor({ timeout: 2 * MINUTE });
     await pause(4000); // let the proof trace be read
     await click(page, sellButton);
-    await sellButton.waitFor({ state: "detached", timeout: 3 * MINUTE });
+    // The button only changes its label while the wallet signs; the sale is done when the receipt line appears.
+    await page.getByRole("status").filter({ hasText: /^Sold\./ }).waitFor({ timeout: 3 * MINUTE });
+    await pause(1200);
+    await scrollBy(page, -(await page.evaluate(() => window.scrollY)), 1400); // back up to the receipt and the list
     await pause(4000);
   },
   async "gasless-start"(page) {

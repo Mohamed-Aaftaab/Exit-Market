@@ -7,7 +7,7 @@ import { Sections } from "./Sections";
 export function Landing() {
   return (
     <>
-      <SiteNav active="home" />
+      <SiteNav active="home" isOverHero />
       <main>
         <Hero />
         <Sections />
