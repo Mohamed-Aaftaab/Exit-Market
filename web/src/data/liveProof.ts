@@ -32,14 +32,14 @@ export const LIVE_PROOF: ReadonlyArray<ProofTx> = [
   },
   {
     label: "The keeper executed the exit through the Outbox",
-    detail: "Exit #6: permissionless, anyone can run it after the challenge period",
+    detail: "Exit #12: permissionless, anyone can run it after the challenge period",
     chain: "arbitrumSepolia",
-    hash: "0xd44532020be37c7f2e72fbcff55fd1912c3a8de27a8105e5453252f1696ebecb",
+    hash: "0x4c7ef727880843fc6a15c741fda4e5fff862b38a23e95c94eabf0426ef0a210b",
   },
   {
     label: "The vault collected face value",
-    detail: "Exit #6 (v2 vault): the purchase discount became LP yield",
+    detail: "Exit #12: the purchase discount became LP yield",
     chain: "arbitrumSepolia",
-    hash: "0xd329b47b64202458c5f9513a562defd7777c6db2eb7031328348e615103cbfd9",
+    hash: "0xb9dee04770a939b0779592e0a99192f84a017ea4d480c193c782b60f8bb84c49",
   },
 ];
