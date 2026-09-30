@@ -1,7 +1,7 @@
-import { ConnectButton } from "@/components/ConnectButton";
-import { ExitDesk, Panel } from "@/components/ExitDesk";
+import { ExitDesk } from "@/components/ExitDesk";
+import { Panel } from "@/components/Panel";
+import { SiteHeader } from "@/components/SiteHeader";
 import { VaultPanel } from "@/components/VaultPanel";
-import { APP_NAME } from "@/lib/format";
 
 const STEPS = [
   ["Redirect", "You call the Arbitrum gateway's own transferExitAndCall, handing your pending exit to the market."],
@@ -13,13 +13,7 @@ const STEPS = [
 export default function Home() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-16">
-      <header className="flex items-center justify-between gap-4 py-5">
-        <div className="min-w-0">
-          <p className="font-semibold text-ink">{APP_NAME}</p>
-          <p className="truncate text-xs text-muted">Sell a pending Orbit-chain withdrawal instead of waiting it out</p>
-        </div>
-        <ConnectButton />
-      </header>
+      <SiteHeader active="desk" />
 
       <main className="space-y-4">
         <ExitDesk />

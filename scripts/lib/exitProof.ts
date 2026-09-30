@@ -9,7 +9,7 @@ import {
 } from "viem";
 
 /** Pre-BOLD rollup event: carries the assertion's after-state (L3 blockHash + sendRoot). */
-const NODE_CREATED = parseAbiItem(
+export const NODE_CREATED = parseAbiItem(
   "event NodeCreated(uint64 indexed nodeNum, bytes32 indexed parentNodeHash, bytes32 indexed nodeHash, bytes32 executionHash, (((bytes32[2] bytes32Vals, uint64[2] u64Vals) globalState, uint8 machineStatus) beforeState, ((bytes32[2] bytes32Vals, uint64[2] u64Vals) globalState, uint8 machineStatus) afterState, uint64 numBlocks) assertion, bytes32 afterInboxBatchAcc, bytes32 wasmModuleRoot, uint256 inboxMaxCount)",
 );
 

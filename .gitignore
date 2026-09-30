@@ -8,3 +8,8 @@ deployments/*.local.json
 web/.next/
 web/node_modules/
 stylus/*/target/
+
+# video renders / voice takes (regenerable) and agent worktrees
+video/out/
+.claude/worktrees/
+__pycache__/

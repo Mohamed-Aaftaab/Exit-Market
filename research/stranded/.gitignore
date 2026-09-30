@@ -1,0 +1,5 @@
+# Pipeline outputs (hundreds of MB of logs, rows and RPC results): regenerate with the scripts, never commit.
+data/
+*.json
+*.log
+*.out

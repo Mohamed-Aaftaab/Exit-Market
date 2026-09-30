@@ -1,0 +1,57 @@
+{
+  "title": "Exit Market: the safest way out of Arbitrum, now instant",
+  "voice": "af_heart",
+  "speed": 1.0,
+  "segments": [
+    {
+      "id": "01-lock",
+      "visual": "3D shot 1: three glass layers (Xai L3, Arbitrum One, Ethereum); a token capsule is caught in a 6.4-day ring",
+      "text": "Leaving Arbitrum the safe way takes six point four days. And once your withdrawal has started, nothing can speed it up."
+    },
+    {
+      "id": "02-stakes",
+      "visual": "3D shot 1 continues; 2D counters: $51M in 30 days, $10.2M waiting, $5.05M never claimed",
+      "text": "In thirty days, fifty-one million dollars in tokens left Arbitrum One this way. On the day we measured, ten million dollars sat in the challenge window, doing nothing. And over five million dollars finished the wait, and was never claimed at all."
+    },
+    {
+      "id": "03-hook",
+      "visual": "3D shot 2: a sealed gate engraved transferExitAndCall(); overlay: WithdrawRedirected on mainnet: 0",
+      "text": "Arbitrum's token bridge has had a way to sell a pending withdrawal for years. On mainnet, it had never been used. The bridge can't tell a real withdrawal from a fake one, so nobody could safely buy one."
+    },
+    {
+      "id": "04-proof",
+      "visual": "3D shot 3: Merkle tree; the path lights from your leaf to the root of a pending rollup node; three checks",
+      "text": "Exit Market fixes that on chain. It rebuilds your withdrawal, proves it sits in the send root of a rollup node that is still pending, and checks that nobody has claimed it. No oracle. No multisig. Only Arbitrum's own commitments."
+    },
+    {
+      "id": "05-sale",
+      "visual": "App footage: withdraw on Xai Testnet, proof trace turns green, one-signature sale, Arbiscan tx",
+      "text": "Here it is, live on an Orbit chain. I withdraw ten USDG from Xai testnet. When the next rollup node is posted, my withdrawal becomes sellable, and the app shows every check. One signature, and the vault pays me now, not in six days."
+    },
+    {
+      "id": "06-gasless",
+      "visual": "App footage: gasless exit from a wallet holding 0 ETH; relayer settles; Arbiscan tx 0xd11f3260",
+      "text": "No gas on the other side? Withdraw straight to our router, and sign once. This wallet holds zero ETH on Arbitrum Sepolia. A relayer settles the sale and pays the gas, and the USDG still lands."
+    },
+    {
+      "id": "07-vault",
+      "visual": "3D shot 4: the capsule enters the vault; USDG streams out; the countdown keeps turning inside the vault",
+      "text": "Liquidity providers earn the discount. When the challenge period ends, a permissionless keeper executes the withdrawal, and the vault collects. Idle capital becomes yield."
+    },
+    {
+      "id": "08-explorer",
+      "visual": "App footage: Exit Explorer, every withdrawal on the chain with live status",
+      "text": "The Exit Explorer tracks every withdrawal on the chain, live. What is waiting, what is sellable, and what was left stranded."
+    },
+    {
+      "id": "09-depth",
+      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, 1.37M gas); Stylus verifier; 336 tests, audit rounds",
+      "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over three hundred tests, three rounds of security review, and every high severity finding fixed."
+    },
+    {
+      "id": "10-close",
+      "visual": "3D shot 5: the capsule passes through all three layers without stopping; title Exit Market",
+      "text": "In twenty twenty three, Offchain Labs researchers showed tradeable exits on a modified Nitro. Exit Market runs on the bridge that is already deployed. The safest way out of Arbitrum, now instant."
+    }
+  ]
+}

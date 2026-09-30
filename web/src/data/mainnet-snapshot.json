@@ -1,0 +1,79 @@
+{
+  "generatedBy": "research/stranded/summary.mjs",
+  "snapshot": {
+    "date": "2026-09-29",
+    "arbHeadBlock": 510076438,
+    "arbHeadTime": "2026-09-29T15:58:52.000Z",
+    "confirmedL2Block": 508004407,
+    "prices": "DefiLlama current prices at snapshot time",
+    "ethUsd": 2673.3
+  },
+  "stranded": {
+    "minAgeDays": 14,
+    "allTime": {
+      "count": 3276,
+      "usd": 5056179,
+      "unpricedCount": 487,
+      "fromBlock": 22207818,
+      "toBlock": 505467950
+    },
+    "last12Months": {
+      "count": 400,
+      "usd": 1920721,
+      "fromBlock": 384299670,
+      "toBlock": 505467950
+    },
+    "eth": {
+      "allTime": {
+        "count": 20392,
+        "eth": 477.62,
+        "usd": 1276826
+      },
+      "last12Months": {
+        "count": 548,
+        "eth": 31.87,
+        "usd": 85195
+      }
+    },
+    "largestAllTime": {
+      "symbol": "POND",
+      "amount": 720000000,
+      "usd": 1449478,
+      "tx": "0x2ecba03ea400e7e6e8c86c4978f9ddb85a9b5a5669d2a35b01fcd3309d13713e",
+      "initiatedAt": "2023-07-13T04:59:35.000Z"
+    },
+    "largestLast12Months": {
+      "symbol": "weETH",
+      "amount": 228.73,
+      "usd": 676214,
+      "tx": "0x8e8acd3a5d2f0583e2b867db92a8ba941e4743c5bc19c9db8219e01b99e4842a",
+      "initiatedAt": "2026-04-17T10:19:11.000Z"
+    },
+    "executeTransactionSimulation": {
+      "simulated": 664,
+      "ok": 651,
+      "files": [
+        "sim_tok_365.json",
+        "sim_old_big.json"
+      ]
+    }
+  },
+  "flow30d": {
+    "fromBlock": 499995661,
+    "toBlock": 510076438,
+    "tokenCount": 760,
+    "tokenUsd": 51022921,
+    "ethCount": 220,
+    "eth": 76314.4,
+    "ethUsd": 204011226
+  },
+  "challengeWindow": {
+    "fromBlock": 508004408,
+    "toBlock": 510076438,
+    "tokenCount": 177,
+    "tokenUsd": 10213259,
+    "ethCount": 65,
+    "eth": 24675.22,
+    "ethUsd": 65964251
+  }
+}

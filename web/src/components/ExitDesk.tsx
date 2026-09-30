@@ -3,22 +3,11 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { NewWithdrawal } from "@/components/NewWithdrawal";
+import { Panel } from "@/components/Panel";
 import { SellTicket } from "@/components/SellTicket";
 import { WithdrawalList } from "@/components/WithdrawalList";
 import { useWithdrawals, type WithdrawalRow } from "@/hooks/useWithdrawals";
 import { errorText } from "@/lib/format";
-
-function Panel({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-line bg-surface">
-      <header className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        {meta && <span className="truncate font-mono text-xs text-muted">{meta}</span>}
-      </header>
-      {children}
-    </section>
-  );
-}
 
 /** Seller workflow: pick a pending Xai withdrawal, see its price and proof, sell it in one signature. */
 export function ExitDesk() {
@@ -58,5 +47,3 @@ export function ExitDesk() {
     </div>
   );
 }
-
-export { Panel };
