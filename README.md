@@ -160,7 +160,7 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 | `contracts/ExitIntentRouter.sol` | gasless sign-once exits, reclaim, recovery of executed exits |
 | `contracts/verifiers/` | `LegacyRootVerifier` (node-based rollups) and `BoldRootVerifier` (BOLD) |
 | `contracts/libraries/` | `ExitLeaf` (Outbox item + Merkle, byte for byte), `ExitAccrual`, `ExitKeys` |
-| `scripts/lib/` | the TypeScript library the app and scripts share: proof builder (`exitProof.ts`), hook encoding (`hookData.ts`), relayer (`relay.ts`), ABIs generated from the contracts (`abis.ts`) |
+| `scripts/lib/` | the TypeScript library the app and scripts share ([README](scripts/lib/README.md), entry `index.ts`): proof builder, hook encoding, relayer, ABIs generated from the contracts |
 | `scripts/` | deploy, permissionless keeper, demo flows |
 | `stylus/exit-proof/` | the proof core in Rust (Stylus SDK 0.9) |
 | `web/` | Next.js app: landing (`/`), seller desk with gasless exits and the vault (`/app`), live Exit Explorer (`/explorer`), pitch deck (`/pitch`), relayer API |
@@ -173,7 +173,8 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 npm install
 npx hardhat test solidity                      # 410 tests
 FORK_TESTS=1 npx hardhat test solidity         # + 9 fork tests against Xai and Arbitrum One mainnet
-npm run test:web && npm run typecheck          # web unit tests, both TypeScript projects
+npm run test:lib && npm run test:web           # library and web unit tests
+npm run typecheck                              # both TypeScript projects
 npm run web:dev                                # http://localhost:3000, no configuration needed
 node scripts/keeper.ts --loop                  # permissionless keeper
 node scripts/selfServe.ts settle <intent.json>  # be your own relayer (or: reclaim <withdrawalTx>)
