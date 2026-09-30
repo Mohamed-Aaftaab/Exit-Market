@@ -1,41 +1,42 @@
 @import "tailwindcss";
 
-/* Settlement-terminal palette: neutral ink surfaces, Arbitrum blue for action,
-   green = verified, amber = pending/challenge window, red = failed. */
+/* One design language for every page: a black canvas, white type, dark pills with a hairline border, white
+   pill actions, Inter for UI and a dot-matrix face for display. Colour is reserved for state:
+   green = verified / paid, amber = pending / challenge window, red = failed / stranded. */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --border: #dde1e7;
-  --text: #0e1116;
-  --muted: #5b6573;
-  --accent: #1b6fe0;
-  --accent-ink: #ffffff;
-  --ok: #0b6b49;
-  --ok-soft: #e3f4ec;
-  --warn: #8a5206;
-  --warn-soft: #fbf0dc;
-  --bad: #a92c26;
-  --bad-soft: #fbe6e4;
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #0c0c0d;
+  --surface-2: #19191b;
+  --border: rgba(255, 255, 255, 0.12);
+  --text: #ffffff;
+  --soft: #d0d0d0;
+  --muted: #8e8e8e;
+  --accent: #ffffff;
+  --accent-ink: #000000;
+  --pill-dark: #28282a;
+  --pill-border: rgba(255, 255, 255, 0.4);
+  --ok: #4fd39a;
+  --ok-soft: rgba(79, 211, 154, 0.14);
+  --warn: #e6ad55;
+  --warn-soft: rgba(230, 173, 85, 0.14);
+  --bad: #f2776f;
+  --bad-soft: rgba(242, 119, 111, 0.14);
+  --nav-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --display: "BubbledotICG-FinePos", var(--font-doto), "Geist Pixel Circle", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0e13;
-    --surface: #12161d;
-    --surface-2: #181d26;
-    --border: #262d39;
-    --text: #e8ebf0;
-    --muted: #8b95a5;
-    --accent: #4c93f5;
-    --accent-ink: #06101f;
-    --ok: #3fbf88;
-    --ok-soft: #10261d;
-    --warn: #e0a345;
-    --warn-soft: #2a2011;
-    --bad: #ef6b63;
-    --bad-soft: #2c1413;
-  }
+/* The design's dot-matrix display face (BubbledotICG-FinePos, CC BY 4.0, credited in the footer). Declared here
+   rather than through the host's stylesheet so a slow font host can never block rendering: Doto stands in. */
+@font-face {
+  font-family: "BubbledotICG-FinePos";
+  src:
+    url("https://db.onlinewebfonts.com/t/8cb707a9b8a73f8a7403336b861c3074.woff2") format("woff2"),
+    url("https://db.onlinewebfonts.com/t/8cb707a9b8a73f8a7403336b861c3074.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
 @theme inline {
@@ -44,31 +45,187 @@
   --color-surface-2: var(--surface-2);
   --color-line: var(--border);
   --color-ink: var(--text);
+  --color-soft: var(--soft);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-pill: var(--pill-dark);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--display);
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-inter), "Segoe UI", system-ui, sans-serif;
   font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body.menu-open {
+  overflow: hidden;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* Interactive elements ease instead of snapping. */
+a,
+button,
+input,
+label {
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s var(--ease);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+/* Shared entrance: rise out of a soft blur. Delay with style="--d: 0.1s". The hidden state lives only in the
+   keyframes, so once the animation ends (or never runs) the element is simply itself and hover styles apply. */
+.reveal {
+  animation: reveal 0.85s var(--ease) backwards;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(22px) scale(0.98);
+  }
+}
+
+/* Scroll reveal (components/site/Reveal flips data-in when the element enters the viewport). Content is only
+   hidden where a script can reveal it again: never without JavaScript, in print, or with reduced motion. */
+@media screen and (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .rv {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(26px) scale(0.985);
+    transition:
+      opacity 0.85s var(--ease),
+      filter 0.85s var(--ease),
+      transform 0.85s var(--ease);
+    transition-delay: var(--d, 0s);
+  }
+  .rv[data-in="true"] {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
   *,
   *::before,
   *::after {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Actions shared by every page. Primary: the white pill with a soft glow. Secondary: the dark pill. */
+.btn-primary,
+.btn-dark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 26px;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 0 22px rgba(255, 255, 255, 0.32),
+    0 0 44px rgba(255, 255, 255, 0.12);
+  color: #000;
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 30px rgba(255, 255, 255, 0.48),
+    0 0 60px rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px) scale(1.02);
+}
+.btn-dark {
+  background: var(--pill-dark);
+  color: #c8c8c8;
+  font-weight: 500;
+}
+.btn-dark:hover:not(:disabled) {
+  background: #323234;
+  color: #fff;
+  transform: translateY(-1px);
+}
+.btn-primary:disabled,
+.btn-dark:disabled {
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Eyebrow: the header's three-dot marker, then a short uppercase label. */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.eyebrow::before {
+  content: "";
+  flex-shrink: 0;
+  width: 3px;
+  height: 3px;
+  margin-left: 5px;
+  background: #fff;
+  box-shadow:
+    -5px 0 0 #fff,
+    5px 0 0 #fff;
+}
+
+/* The surface every block of content sits on. */
+.panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, #101011 0%, #0a0a0b 100%);
 }

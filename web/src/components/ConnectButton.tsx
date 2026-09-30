@@ -1,8 +1,10 @@
 "use client";
 
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import styles from "@/components/site/site.module.css";
 import { shortHex } from "@/lib/format";
 
+/** The header's dark pill on the desk: connects an injected wallet, or shows the connected address. */
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
@@ -13,7 +15,7 @@ export function ConnectButton() {
       <button
         type="button"
         onClick={() => disconnect()}
-        className="rounded-md border border-line bg-surface px-3 py-1.5 font-mono text-sm text-ink hover:bg-surface-2"
+        className={`${styles.pill} font-mono`}
         title="Disconnect"
         aria-label={`Disconnect wallet ${address}`}
       >
@@ -28,7 +30,7 @@ export function ConnectButton() {
       type="button"
       disabled={!injected || isPending}
       onClick={() => injected && connect({ connector: injected })}
-      className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+      className={`${styles.pill} disabled:opacity-50`}
     >
       {isPending ? "Connecting…" : "Connect wallet"}
     </button>

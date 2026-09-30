@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
+import { ConnectButton } from "@/components/ConnectButton";
 import { ExitDesk } from "@/components/ExitDesk";
 import { Panel } from "@/components/Panel";
-import { SiteHeader } from "@/components/SiteHeader";
+import { PageShell } from "@/components/site/PageShell";
 import { VaultPanel } from "@/components/VaultPanel";
+
+export const metadata: Metadata = {
+  title: "Exit Desk · Exit Market",
+  description: "Pick a pending Xai Testnet withdrawal, see its price and on-chain proof, and sell it in one signature.",
+};
 
 const STEPS = [
   ["Redirect", "You call the Arbitrum gateway's own transferExitAndCall, handing your pending exit to the market."],
@@ -12,30 +19,34 @@ const STEPS = [
 
 export default function DeskPage() {
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-16">
-      <SiteHeader active="desk" />
-
-      <main className="space-y-4">
+    <PageShell
+      active="desk"
+      action={<ConnectButton />}
+      eyebrow="Exit desk"
+      title="Sell Your Withdrawal"
+      lead="Start a withdrawal from Xai Testnet, or pick one already in flight. As soon as the next rollup node posts, it is provable on-chain and sellable in one signature."
+    >
+      <div className="space-y-4">
         <ExitDesk />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
-          <Panel title="How the market verifies an exit" meta="all on-chain, inside your transaction">
+          <Panel title="How the market verifies an exit" meta="all on-chain, inside your transaction" delay={0.16}>
             <ol className="grid gap-px bg-line sm:grid-cols-2">
               {STEPS.map(([title, body], i) => (
-                <li key={title} className="bg-surface p-4">
-                  <p className="font-mono text-xs text-accent">0{i + 1}</p>
-                  <p className="text-sm font-medium text-ink">{title}</p>
+                <li key={title} className="bg-surface p-5">
+                  <p className="font-display text-xl leading-none text-ink">0{i + 1}</p>
+                  <p className="mt-2 text-sm font-medium text-ink">{title}</p>
                   <p className="mt-1 text-sm text-muted">{body}</p>
                 </li>
               ))}
             </ol>
           </Panel>
 
-          <Panel title="Exit liquidity vault · evUSDG" meta="ERC-4626">
+          <Panel title="Exit liquidity vault · evUSDG" meta="ERC-4626" delay={0.22}>
             <VaultPanel />
           </Panel>
         </div>
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

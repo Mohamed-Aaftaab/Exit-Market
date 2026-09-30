@@ -128,7 +128,7 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 | `contracts/libraries/` | `ExitLeaf` (Outbox item + Merkle, byte-for-byte), `ExitAccrual`, `ExitKeys` |
 | `stylus/exit-proof/` | the proof core in Rust (Stylus SDK 0.9) |
 | `scripts/` | deploy, keeper, demo flows, proof builder (`lib/exitProof.ts`) |
-| `web/` | Next.js app: seller desk, gasless exits, vault, live Exit Explorer, relayer API |
+| `web/` | Next.js app: landing (`/`), seller desk with gasless exits and the vault (`/app`), live Exit Explorer (`/explorer`), pitch deck (`/pitch`), relayer API |
 | `research/stranded/` | the mainnet stranded-exit and challenge-window research |
 | `video/` | the demo video as code: Blender (Cycles) shots, live-app capture harness, cards, assembler |
 
@@ -138,7 +138,7 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 npm install
 npx hardhat test solidity                      # 406 tests
 FORK_TESTS=1 npx hardhat test solidity         # + fork tests against Xai and Arbitrum One mainnet
-npm run web:dev                                # http://localhost:3000
+npm run web:dev                                # http://localhost:3000 (desk at /app, deck at /pitch)
 node scripts/keeper.ts --loop                  # permissionless keeper
 ```
 

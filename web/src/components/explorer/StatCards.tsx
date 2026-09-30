@@ -28,7 +28,7 @@ export function StatCards({ summary }: { summary: ExplorerSummary | undefined })
   const v = (n: number | undefined) => (n === undefined ? "—" : integer(n));
   const s = (text: string | undefined, fallback: string) => (summary ? text ?? fallback : "scanning…");
   return (
-    <dl aria-busy={!summary} className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
+    <dl aria-busy={!summary} className="reveal grid grid-cols-2 gap-px overflow-hidden rounded-[28px] border border-line bg-line lg:grid-cols-4">
       <StatCard label="Exits, all time" value={v(summary?.total)} sub={s("standard gateway", "")} tone="neutral" />
       <StatCard
         label="In challenge window"

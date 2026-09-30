@@ -16,7 +16,7 @@ const PILL: Record<ExitStatus, string> = {
   "awaiting-assertion": "bg-warn-soft text-warn",
   "in-window": "bg-ok-soft text-ok",
   stranded: "bg-bad-soft text-bad",
-  claimed: "bg-surface-2 text-muted",
+  claimed: "bg-white/[0.06] text-muted ring-1 ring-inset ring-white/10",
   transferred: "bg-accent/10 text-accent",
 };
 
@@ -51,7 +51,7 @@ export function AddressLink({ address, href }: { address: Address; href: string 
 
 export function StatusPill({ exit }: { exit: ExplorerExit }) {
   const label = exit.status === "transferred" && exit.viaExitMarket ? "Sold via Exit Market" : LABEL[exit.status];
-  return <span className={`inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${PILL[exit.status]}`}>{label}</span>;
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${PILL[exit.status]}`}>{label}</span>;
 }
 
 /** One line under the pill: time left, or what the stage means for the owner. */
@@ -100,7 +100,7 @@ export function OwnerCell({ exit }: { exit: ExplorerExit }) {
   return (
     <span className="flex flex-col items-start gap-0.5">
       {exit.ownerContract ? (
-        <ExternalLink href={parentAddressUrl(exit.owner)} className="rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
+        <ExternalLink href={parentAddressUrl(exit.owner)} className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
           <span title={exit.owner}>{ownerLabel(exit)}</span>
         </ExternalLink>
       ) : (

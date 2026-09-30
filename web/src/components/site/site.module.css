@@ -1,0 +1,374 @@
+/* Site chrome shared by every page: the floating pill header, its mobile sheet, and the footer. */
+
+/* ---------------------------------------------------------------- header */
+.bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  padding: clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px) 0;
+  pointer-events: none;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(18px, 2.8vw, 28px);
+  width: 100%;
+  max-width: 720px;
+  pointer-events: auto;
+}
+/* The entrance animates the header's children, not the header: a transform on the header itself would make
+   it the containing block of the fixed mobile overlay rendered inside it. */
+.logo,
+.nav,
+.action,
+.burger {
+  animation: slideDown 0.7s var(--ease) both;
+}
+.logo {
+  position: relative;
+  z-index: 3; /* stays above the mobile overlay */
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: clamp(40px, 4.4vw, 46px);
+  height: clamp(40px, 4.4vw, 46px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--nav-shadow);
+}
+.logo:hover {
+  transform: scale(1.04);
+}
+.logo svg {
+  width: 72%;
+  height: 72%;
+}
+.nav {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-around;
+  max-width: 430px;
+  height: clamp(44px, 5.2vw, 48px);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--nav-shadow);
+}
+.navLink {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 0 clamp(8px, 1.4vw, 14px);
+  color: #2e2e2e;
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  opacity: 0.5;
+}
+.navLink:hover {
+  opacity: 0.75;
+}
+.navLink.active {
+  opacity: 1;
+}
+/* The global focus ring is white; on the white pill and sheet it has to be dark. */
+.navLink:focus-visible,
+.sheetLink:focus-visible {
+  outline-color: #000;
+  outline-offset: -4px;
+  border-radius: 999px;
+  opacity: 1;
+}
+/* Active marker: three 3x3 dots under the label. */
+.navLink.active::after,
+.sheetLink.active::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin-left: -1.5px;
+  background: #000;
+  box-shadow:
+    -5px 0 0 #000,
+    5px 0 0 #000;
+}
+.action {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-shrink: 0;
+}
+/* Dark pill: the header's right-hand action and every secondary button on the site. */
+.pill {
+  display: grid;
+  place-items: center;
+  height: clamp(44px, 5.2vw, 48px);
+  padding: 0 clamp(16px, 2vw, 22px);
+  border-radius: 999px;
+  background: var(--pill-dark);
+  box-shadow: var(--nav-shadow);
+  color: #c8c8c8;
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pill:hover:not(:disabled) {
+  background: #323234;
+  color: #fff;
+  transform: translateY(-1px);
+}
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+/* ---------------------------------------------------------------- mobile menu */
+.burger {
+  display: none;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  padding: calc(clamp(16px, 2.4vh, 28px) + 64px) clamp(14px, 3vw, 32px) 0;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+  animation: overlayIn 0.28s ease both;
+}
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 22px 18px 20px;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  animation: menuIn 0.38s var(--ease) both;
+}
+.sheetLink {
+  position: relative;
+  padding: 14px 0 18px;
+  color: #2e2e2e;
+  font-size: 17px;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0.55;
+  animation: linkIn 0.4s var(--ease) both;
+  animation-delay: calc(0.06s * var(--i, 0) + 0.08s);
+}
+.sheetLink.active {
+  opacity: 1;
+}
+.sheetLink.active::after {
+  bottom: 8px;
+}
+.sheetLaunch {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 999px;
+  background: var(--pill-dark);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  animation: linkIn 0.4s var(--ease) both;
+  animation-delay: calc(0.06s * var(--i, 0) + 0.08s);
+}
+@keyframes overlayIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.97);
+  }
+}
+@keyframes linkIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (max-width: 720px) {
+  .nav,
+  .launch {
+    display: none;
+  }
+  .header {
+    justify-content: space-between;
+  }
+  .logo {
+    width: 48px;
+    height: 48px;
+  }
+  .action {
+    margin-left: auto;
+  }
+  .burger {
+    position: relative;
+    z-index: 3;
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--pill-dark);
+    box-shadow: var(--nav-shadow);
+  }
+  .burger span {
+    position: absolute;
+    width: 18px;
+    height: 1.5px;
+    background: #fff;
+    transition:
+      transform 0.3s var(--ease),
+      opacity 0.2s ease,
+      background 0.25s ease;
+  }
+  .burger span:nth-child(1) {
+    transform: translateY(-6.5px);
+  }
+  .burger span:nth-child(3) {
+    transform: translateY(6.5px);
+  }
+  .burger[aria-expanded="true"] {
+    background: #fff;
+  }
+  .burger[aria-expanded="true"] span {
+    background: #000;
+  }
+  .burger[aria-expanded="true"] span:nth-child(1) {
+    transform: rotate(45deg);
+  }
+  .burger[aria-expanded="true"] span:nth-child(2) {
+    opacity: 0;
+  }
+  .burger[aria-expanded="true"] span:nth-child(3) {
+    transform: rotate(-45deg);
+  }
+}
+
+/* ---------------------------------------------------------------- footer */
+.footer {
+  width: 100%;
+  border-top: 1px solid var(--border);
+  padding: clamp(40px, 6vh, 64px) clamp(18px, 4vw, 40px) clamp(28px, 4vh, 40px);
+}
+.footerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: clamp(24px, 4vw, 56px);
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.footerBrand {
+  font-family: var(--display);
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+.footerNote {
+  max-width: 300px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.footerHead {
+  margin-bottom: 12px;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.footerLink {
+  display: block;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+a.footerLink:hover {
+  color: #fff;
+}
+.footerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
+  max-width: 1080px;
+  margin: clamp(28px, 4vh, 44px) auto 0;
+  color: #7c7c7c;
+  font-size: 12.5px;
+}
+.footerMeta a:hover {
+  color: #fff;
+}
+@media (max-width: 720px) {
+  .footerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .footerGrid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------------------------------------------------------------- inner pages */
+.shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+/* Light from above, echoing the hero video. */
+.glow {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: min(620px, 80vh);
+  background: radial-gradient(ellipse 72% 100% at 50% 0%, rgba(198, 212, 240, 0.2), rgba(198, 212, 240, 0.05) 45%, transparent 72%);
+  pointer-events: none;
+}
+.shellMain {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: calc(clamp(16px, 2.4vh, 28px) + 48px + clamp(36px, 7vh, 76px)) clamp(16px, 3vw, 32px) clamp(56px, 9vh, 96px);
+}
+.pageHead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: clamp(28px, 5vh, 52px);
+  text-align: center;
+}
+.pageTitle {
+  margin: 0;
+  color: #fff;
+  font-family: var(--display);
+  font-size: clamp(30px, 5vw, 64px);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1.08;
+}
+.pageLead {
+  max-width: 660px;
+  color: rgba(208, 208, 208, 0.8);
+  font-size: clamp(14.5px, 1.3vw, 17px);
+  line-height: 1.6;
+}

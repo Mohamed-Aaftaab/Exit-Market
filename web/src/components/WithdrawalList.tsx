@@ -47,7 +47,7 @@ export function WithdrawalList({ rows, selected, onSelect }: Props) {
                   exit #{row.exitNum.toString()} · outbox #{row.position.toString()}
                 </span>
               </span>
-              <span className={`rounded px-2 py-0.5 text-xs font-medium ${status.className}`}>{status.label}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${status.className}`}>{status.label}</span>
             </button>
           </li>
         );

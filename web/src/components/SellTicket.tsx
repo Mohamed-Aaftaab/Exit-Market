@@ -45,7 +45,7 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
           target="_blank"
           rel="noopener noreferrer"
           role="status"
-          className="block rounded-md bg-ok-soft px-4 py-3 text-center text-sm font-medium text-ok"
+          className="block rounded-full bg-ok-soft px-4 py-3 text-center text-sm font-medium text-ok hover:brightness-125"
         >
           Sold. {usdg(breakdownOf(sell.variables).receive)} USDG sent to your wallet on Arbitrum ↗
         </a>
@@ -104,7 +104,7 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
         disabled={sell.isPending}
         aria-busy={sell.isPending}
         onClick={() => sell.mutate(sale)}
-        className="w-full rounded-md bg-accent px-4 py-3 text-sm font-semibold text-accent-ink hover:opacity-90 disabled:opacity-60"
+        className="btn-primary w-full"
       >
         {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}
       </button>

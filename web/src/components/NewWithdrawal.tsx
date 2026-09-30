@@ -87,14 +87,14 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
           value={amount}
           disabled={isBusy}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 font-mono text-sm text-ink"
+          className="min-w-0 flex-1 rounded-full border border-line bg-surface-2 px-4 py-2.5 font-mono text-sm text-ink placeholder:text-muted focus:border-white/40 focus:outline-none"
         />
         <button
           type="button"
           onClick={submit}
           disabled={!address || isBusy}
           aria-busy={isBusy}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+          className="btn-primary"
         >
           {isBusy ? "Working…" : isFast ? "Fast exit" : "Withdraw"}
         </button>
