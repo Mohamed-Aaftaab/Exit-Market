@@ -73,7 +73,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await pause(2500);
   },
   async withdraw(page) {
-    await page.goto(APP_URL);
+    await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
     await click(page, page.getByText("Standard", { exact: true }));
@@ -83,7 +83,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await pause(3500);
   },
   async sell(page) {
-    await page.goto(APP_URL);
+    await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
     const row = page.getByRole("button", { name: /Sellable now/ }).first();
@@ -97,7 +97,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await pause(4000);
   },
   async "gasless-start"(page) {
-    await page.goto(APP_URL);
+    await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
     // Fast exit is the default mode; the seller holds USDG on Xai but no ETH on Arbitrum Sepolia.
@@ -107,7 +107,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await pause(4000);
   },
   async "gasless-settled"(page) {
-    await page.goto(APP_URL);
+    await page.goto(`${APP_URL}/app`);
     await connect(page);
     await page.getByRole("link", { name: /settled/ }).first().waitFor({ timeout: 5 * MINUTE });
     await pause(4000);
