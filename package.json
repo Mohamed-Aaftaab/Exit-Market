@@ -2,6 +2,8 @@
   "name": "exit-market",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": "github:Mohamed-Aaftaab/Exit-Market",
   "type": "module",
   "scripts": {
     "build": "hardhat build",

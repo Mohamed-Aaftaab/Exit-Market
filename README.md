@@ -7,7 +7,7 @@ years ago that had never been used on mainnet.
 Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain · BOLD verifier proven on an
 **Arbitrum One mainnet fork** · proof core also in **Stylus** (Rust)
 
-[Live app](https://exit-market-gamma.vercel.app) · [Desk](https://exit-market-gamma.vercel.app/app) ·
+[Live app](https://exit-market-gamma.vercel.app) · [Source](https://github.com/Mohamed-Aaftaab/Exit-Market) · [Desk](https://exit-market-gamma.vercel.app/app) ·
 [Exit Explorer](https://exit-market-gamma.vercel.app/explorer) · [Pitch deck](https://exit-market-gamma.vercel.app/pitch) ·
 Demo video: link added at submission
 
@@ -161,3 +161,7 @@ v1 vault `0x4b1f…afed` and router `0x383b…a065` ran the live transactions ab
 custom `0x04e14E…5D88`.
 
 Built for the Arbitrum Open House Singapore Online Buildathon. Payments in Paxos **USDG**.
+
+## License
+
+[MIT](LICENSE).
