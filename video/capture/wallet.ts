@@ -86,6 +86,7 @@ export function createTestWallet(key: Hex, emit: Emit): TestWallet {
         return [{ parentCapability: "eth_accounts" }];
       case "wallet_addEthereumChain":
       case "wallet_watchAsset":
+      case "wallet_revokePermissions":
         return null;
       case "wallet_switchEthereumChain": {
         const next = Number((params[0] as { chainId: Hex }).chainId);

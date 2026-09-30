@@ -1,4 +1,18 @@
-# Exit Market — Design (v0.2)
+# Exit Market — Design
+
+## Since v0.2 (current state; see docs/SECURITY.md for every review round)
+- **WETH exits are supported**: the verifier retries the leaf with `value = amount` (WETH gateways send callvalue),
+  which is safe because a gateway that never sends callvalue can never produce such a leaf. The v0.2 note below
+  is historical.
+- **BOLD rollups** (Arbitrum One/Nova, Arbitrum Sepolia): `verifiers/BoldRootVerifier.sol` registers assertion
+  preimages and accepts a pending root only when every pending ancestor up to the latest confirmed assertion is
+  registered and unchallenged.
+- **Gasless exits**: `ExitIntentRouter` owns router-destined withdrawals and settles one signed EIP-712 order into
+  the vault it is bound to.
+- **Vault v2**: bounded open set valued live (rejected exits count 0), linear discount accrual, one impairment
+  window per rejected root.
+- A **permissionless keeper** (`scripts/keeper.ts`) writes off rejected exits, executes confirmed ones through the
+  Outbox and collects them into the vault.
 
 ## v0.2 changes (architect review, each claim re-verified against source)
 - Legacy rollups do NOT delete rejected nodes (`RollupCore._rejectNextNode` only bumps

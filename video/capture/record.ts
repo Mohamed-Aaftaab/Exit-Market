@@ -22,8 +22,8 @@ async function open(profile: string, keyVar: string | undefined): Promise<{ cont
   const context = await chromium.launchPersistentContext(`${OUT}/profiles/${profile}`, {
     executablePath: CHROME,
     headless: true,
-    viewport: { width: 1536, height: 864 },
-    deviceScaleFactor: 1.25, // 1920x1080 device pixels, UI large enough to read on video
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1.5, // 1920x1080 device pixels; the app fills the frame and reads well on video
     colorScheme: "dark",
   });
   const page = context.pages()[0] ?? (await context.newPage());
@@ -32,16 +32,34 @@ async function open(profile: string, keyVar: string | undefined): Promise<{ cont
     if (!key) throw new Error(`Missing ${keyVar} in .env`);
     const ref: { page?: Page } = { page };
     const wallet = createTestWallet(key as Hex, emitter(ref));
-    await installWallet(page, wallet);
+    const debug = Boolean(process.env.DEBUG_WALLET);
+    await installWallet(page, {
+      ...wallet,
+      async request(method, params) {
+        try {
+          const result = await wallet.request(method, params);
+          if (debug) console.log(`wallet ${method} ->`, JSON.stringify(result)?.slice(0, 80));
+          return result;
+        } catch (err) {
+          console.log(`wallet ${method} FAILED:`, err instanceof Error ? err.message.split("\n")[0] : err);
+          throw err;
+        }
+      },
+    });
+    if (debug) page.on("console", (m) => m.type() === "error" && console.log("page error:", m.text().slice(0, 200)));
     console.log(`test wallet ${wallet.address}`);
   }
   return { context, page };
 }
 
 async function connect(page: Page): Promise<void> {
-  const button = page.getByRole("button", { name: "Connect wallet" });
-  if (await button.isVisible().catch(() => false)) await click(page, button);
-  await page.getByRole("button", { name: /Disconnect wallet/ }).waitFor({ timeout: 30_000 });
+  const connected = page.getByRole("button", { name: /^Disconnect wallet/ });
+  await pause(2500); // let wagmi auto-reconnect a remembered wallet first
+  if (!(await connected.isVisible().catch(() => false))) {
+    // exact: the connected button's name ("Disconnect wallet 0x…") also contains "connect wallet"
+    await click(page, page.getByRole("button", { name: "Connect wallet", exact: true }));
+  }
+  await connected.waitFor({ timeout: 30_000 });
 }
 
 const scenes: Record<string, (page: Page) => Promise<void>> = {
@@ -82,8 +100,8 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await page.goto(APP_URL);
     await pause(1500);
     await connect(page);
-    await click(page, page.getByText("Fast exit", { exact: true }));
-    await typeInto(page, page.locator("#withdraw-amount"), "10");
+    // Fast exit is the default mode; the seller holds USDG on Xai but no ETH on Arbitrum Sepolia.
+    await typeInto(page, page.locator("#withdraw-amount"), "5");
     await click(page, page.getByRole("button", { name: "Fast exit", exact: true }));
     await page.getByText(/^Signed\./).waitFor({ timeout: 3 * MINUTE });
     await pause(4000);
