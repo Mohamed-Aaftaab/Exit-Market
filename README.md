@@ -1,5 +1,7 @@
 # Exit Market
 
+[![CI](https://github.com/Mohamed-Aaftaab/Exit-Market/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohamed-Aaftaab/Exit-Market/actions/workflows/ci.yml)
+
 **Sell an Arbitrum withdrawal while it is still waiting out its challenge period.** Exit Market proves on-chain,
 against the rollup's own commitments, that a pending canonical-bridge withdrawal is real, and pays for it now,
 using a hook every Arbitrum token gateway has shipped for years and nobody had used on mainnet.
