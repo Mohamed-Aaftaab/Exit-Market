@@ -17,6 +17,7 @@ const APP_URL = process.env.APP_URL ?? "http://localhost:3100";
 const CHROME = process.env.CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const OUT = "video/out/capture";
 const MINUTE = 60_000;
+const DESK_SCROLL = 240; // past the page title, so the desk's panels fill the frame
 
 async function open(profile: string, keyVar: string | undefined): Promise<{ context: BrowserContext; page: Page }> {
   const context = await chromium.launchPersistentContext(`${OUT}/profiles/${profile}`, {
@@ -76,6 +77,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
+    await scrollBy(page, DESK_SCROLL, 1200);
     await click(page, page.getByText("Standard", { exact: true }));
     await typeInto(page, page.locator("#withdraw-amount"), "10");
     await click(page, page.getByRole("button", { name: "Withdraw", exact: true }));
@@ -86,6 +88,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
+    await scrollBy(page, DESK_SCROLL, 1200);
     const row = page.getByRole("button", { name: /Sellable now/ }).first();
     await row.waitFor({ timeout: 2 * MINUTE });
     await click(page, row);
@@ -103,6 +106,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await page.goto(`${APP_URL}/app`);
     await pause(1500);
     await connect(page);
+    await scrollBy(page, DESK_SCROLL, 1200);
     // Fast exit is the default mode; the seller holds USDG on Xai but no ETH on Arbitrum Sepolia.
     await typeInto(page, page.locator("#withdraw-amount"), "5");
     await click(page, page.getByRole("button", { name: "Fast exit", exact: true }));
@@ -112,6 +116,7 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
   async "gasless-settled"(page) {
     await page.goto(`${APP_URL}/app`);
     await connect(page);
+    await scrollBy(page, DESK_SCROLL, 1200);
     await page.getByRole("link", { name: /settled/ }).first().waitFor({ timeout: 5 * MINUTE });
     await pause(4000);
   },

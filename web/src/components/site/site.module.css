@@ -37,13 +37,14 @@
   max-width: 720px;
   pointer-events: auto;
 }
-/* The entrance animates the header's children, not the header: a transform on the header itself would make
-   it the containing block of the fixed mobile overlay rendered inside it. */
-.logo,
-.nav,
-.action,
-.burger {
-  animation: slideDown 0.7s var(--ease) both;
+/* The entrance plays on the landing only, so the header holds still while moving between pages. It animates the
+   header's children, not the header: a transform on the header itself would make it the containing block of
+   the fixed mobile overlay rendered inside it. */
+.entrance .logo,
+.entrance .nav,
+.entrance .action,
+.entrance .burger {
+  animation: slideDown 0.7s var(--ease) backwards;
 }
 .logo {
   position: relative;

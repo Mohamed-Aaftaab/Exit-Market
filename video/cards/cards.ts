@@ -35,8 +35,9 @@ html, body { width: 1920px; height: 1080px; font-family: Inter, sans-serif; colo
   background: rgba(20, 20, 21, 0.8); border: 1px solid rgba(255, 255, 255, 0.4); backdrop-filter: blur(6px); }
 .lower b { display: block; font-size: 80px; font-weight: 600; letter-spacing: -2.5px; line-height: 1; }
 .lower span { display: block; margin-top: 12px; font-size: 30px; color: #c4c2c3; max-width: 900px; }
-.tag { position: absolute; left: 48px; bottom: 40px; padding: 10px 20px; border-radius: 999px; font-family: Mono;
-  font-size: 22px; letter-spacing: 1px; background: rgba(40, 40, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.4); color: #4fd39a; }
+/* Top right, beside the app's header: the desk's status lines sit along the bottom edge of the frame. */
+.tag { position: absolute; right: 44px; top: 40px; padding: 10px 18px; border-radius: 999px; font-family: Mono;
+  font-size: 20px; letter-spacing: 0.5px; background: rgba(40, 40, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.4); color: #4fd39a; }
 .src { position: absolute; left: 160px; bottom: 70px; font-family: Mono; font-size: 22px; color: #7c7c7c; }
 `;
 
@@ -59,7 +60,7 @@ const CARDS: Card[] = [
     transparent: true,
     html: lower("0", "WithdrawRedirected events ever emitted by the Arbitrum One and Nova mainnet gateways", AMBER),
   },
-  { name: "live-tag", transparent: true, html: `<div class="tag">● LIVE · Xai Testnet → Arbitrum Sepolia · real transactions</div>` },
+  { name: "live-tag", transparent: true, html: `<div class="tag">● LIVE · real transactions</div>` },
   {
     name: "skip",
     html: `<div class="full"><p class="eyebrow" style="color:${AMBER}">~15 minutes later</p>
