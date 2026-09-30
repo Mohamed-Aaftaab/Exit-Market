@@ -24,6 +24,8 @@ export interface PreparedSale {
   deadlineBlock: bigint;
   currentL1Block: bigint;
   vaultQuote: bigint;
+  /** USDG the vault holds idle right now; a sale needs at least `vaultQuote` of it. */
+  vaultIdle: bigint;
   marketFeeBps: number;
 }
 
@@ -55,7 +57,10 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
     node.deadlineBlock,
     true,
   );
-  const vaultQuote = await parent.readContract({ address: vault, abi: vaultAbi, functionName: "quote", args: [record] });
+  const [vaultQuote, vaultIdle] = await Promise.all([
+    parent.readContract({ address: vault, abi: vaultAbi, functionName: "quote", args: [record] }),
+    parent.readContract({ address: vault, abi: vaultAbi, functionName: "idleAssets" }),
+  ]);
 
   return {
     withdrawal,
@@ -70,6 +75,7 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
     deadlineBlock: node.deadlineBlock,
     currentL1Block: l1Block,
     vaultQuote,
+    vaultIdle,
     marketFeeBps: feeBps,
   };
 }

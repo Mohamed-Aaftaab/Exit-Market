@@ -82,6 +82,8 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
 
   const sale = prepared.data;
   const b = breakdownOf(sale);
+  // The vault pays from idle USDG; what it has spent on earlier exits returns as each clears its window.
+  const hasLiquidity = sale.vaultIdle >= sale.vaultQuote;
 
   return (
     <div className="space-y-5 p-5">
@@ -99,15 +101,23 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
 
       <ProofTrace sale={sale} />
 
-      <button
-        type="button"
-        disabled={sell.isPending}
-        aria-busy={sell.isPending}
-        onClick={() => sell.mutate(sale)}
-        className="btn-primary w-full"
-      >
-        {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}
-      </button>
+      {hasLiquidity ? (
+        <button
+          type="button"
+          disabled={sell.isPending}
+          aria-busy={sell.isPending}
+          onClick={() => sell.mutate(sale)}
+          className="btn-primary w-full"
+        >
+          {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}
+        </button>
+      ) : (
+        <p role="status" className="rounded-3xl bg-warn-soft px-4 py-3 text-sm text-warn">
+          The vault has {usdg(sale.vaultIdle)} USDG free right now and this exit needs {usdg(sale.vaultQuote)}. It
+          refills as the exits it already bought clear their challenge window, or when LPs deposit. This quote
+          refreshes every minute.
+        </p>
+      )}
       {sell.isError && (
         <p role="alert" className="text-sm text-bad">
           {errorText(sell.error)}
