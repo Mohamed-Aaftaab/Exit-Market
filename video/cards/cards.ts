@@ -74,7 +74,7 @@ const CARDS: Card[] = [
       <p class="body">On an Ethereum mainnet fork, Exit Market registers the real BOLD assertion chain and lists a real pending
       Arbitrum One withdrawal through the real L1 gateway. Every pending ancestor must be unchallenged.</p>
       <div class="stats"><div class="stat"><b>137</b><span>pending assertions walked</span></div>
-      <div class="stat"><b>1.37M</b><span>gas for the whole walk</span></div>
+      <div class="stat"><b>1.1M</b><span>gas for the whole walk</span></div>
       <div class="stat"><b>504.7</b><span>LINK in the withdrawal</span></div></div></div>
       <p class="src">contracts/test/fork/ArbOneBoldFork.t.sol</p>`,
   },
@@ -89,8 +89,8 @@ const CARDS: Card[] = [
   {
     name: "quality",
     html: `<div class="full"><p class="eyebrow" style="color:${GREEN}">Built to be trusted</p>
-      <p class="title">Four review rounds. Every high fixed, with a regression test.</p>
-      <div class="stats"><div class="stat"><b>400+</b><span>Solidity tests, incl. fuzz &amp; invariants</span></div>
+      <p class="title">Five review rounds. Every high reproduced, fixed and tested.</p>
+      <div class="stats"><div class="stat"><b>411</b><span>Solidity tests, incl. fuzz &amp; invariants</span></div>
       <div class="stat"><b>0</b><span>Slither high / medium</span></div>
       <div class="stat"><b>9</b><span>mainnet &amp; Xai fork tests</span></div></div>
       <p class="body">Internal AI-assisted review (not a third-party audit): threat model and findings in docs/SECURITY.md.</p></div>`,
