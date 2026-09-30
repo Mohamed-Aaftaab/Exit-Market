@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ExitLeaf} from "../libraries/ExitLeaf.sol";
 import {ExitClaim, ExitRecord, IExitMarket, PayoutProof} from "../interfaces/IExitMarket.sol";
@@ -648,10 +649,11 @@ contract ExitMarketTest is ExitFixture {
         TestBuyer tb = new TestBuyer(usdg, PRICE);
         usdg.mint(address(tb), PRICE);
 
-        _sellTo(ws[0], seller, address(tb), PRICE);
+        _sellTo(ws[0], seller, address(tb), PRICE - _fee(PRICE));
 
         assertEq(usdg.balanceOf(seller), PRICE - _fee(PRICE));
         assertEq(usdg.balanceOf(address(market)), _fee(PRICE));
+        assertEq(usdg.balanceOf(address(tb)), 0, "the market pulled exactly the price");
         assertEq(_ownerOf(ws[0]), address(tb));
         assertEq(tb.lastAmount(), AMOUNT);
         market.withdrawFees();
@@ -663,20 +665,26 @@ contract ExitMarketTest is ExitFixture {
         TestBuyer tb = new TestBuyer(usdg, PRICE);
         usdg.mint(address(tb), PRICE);
 
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.PayoutBelowMin.selector, PRICE, PRICE + 1));
-        _sellTo(ws[0], seller, address(tb), PRICE + 1);
+        uint256 net = PRICE - _fee(PRICE);
+
+        // The floor is on what the seller receives after the fee (round 5, M1).
+        vm.expectRevert(abi.encodeWithSelector(IExitMarket.PayoutBelowMin.selector, net, net + 1));
+        _sellTo(ws[0], seller, address(tb), net + 1);
 
         assertEq(_ownerOf(ws[0]), seller);
     }
 
-    function test_sellToBuyer_measuresActualBalanceNotBuyerReportedPrice() public {
+    function test_sellToBuyer_pullsTheReportedPriceSoOverstatingItReverts() public {
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         TestBuyer tb = new TestBuyer(usdg, 1_000e6);
-        tb.setClaimed(PRICE); // buyer lies about what it paid
-        usdg.mint(address(tb), 1_000e6);
+        tb.setClaimed(PRICE); // buyer reports more than it approved
+        usdg.mint(address(tb), PRICE);
 
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.PayoutBelowMin.selector, 1_000e6, PRICE));
-        _sellTo(ws[0], seller, address(tb), PRICE);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(market), 1_000e6, PRICE)
+        );
+        _sellTo(ws[0], seller, address(tb), 0);
+        assertEq(_ownerOf(ws[0]), seller);
     }
 
     // ============================================================ 12. happy paths

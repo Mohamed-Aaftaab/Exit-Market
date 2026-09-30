@@ -4,7 +4,8 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ExitRecord, IExitBuyer} from "../../interfaces/IExitMarket.sol";
 
-/// @dev Configurable IExitBuyer: pays `pay`, reports `claimed` (0 = honest), optionally re-enters the market.
+/// @dev Configurable IExitBuyer: approves `pay`, reports `claimed` (0 = honest, i.e. `pay`) as the price the market
+///      pulls, optionally re-enters the market.
 contract TestBuyer is IExitBuyer {
     IERC20 public immutable token;
     uint256 public pay;
@@ -48,7 +49,7 @@ contract TestBuyer is IExitBuyer {
                 reentryError = bytes4(ret);
             }
         }
-        token.transfer(msg.sender, pay);
+        token.approve(msg.sender, pay);
         return claimed == 0 ? pay : claimed;
     }
 }

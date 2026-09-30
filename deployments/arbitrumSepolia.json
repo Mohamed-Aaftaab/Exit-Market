@@ -1,14 +1,28 @@
 {
+  "version": "v3",
   "chainId": 421614,
   "usdg": "0xFFC95faa3d63Cde504a05B567C600B78C0b41892",
-  "verifier": "0xb06028304345d9ed295d812aca5f1430ec9808c9",
-  "market": "0xd112ea99a2664d65de013fcaf3a6ce1604a8c51b",
-  "vault": "0xb5aad1dfb95f4362121164f86dd9b69094ee492c",
-  "router": "0xa1b07789799b1b961b8b554b49429b0e97806c33",
-  "boldVerifier": "0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903",
-  "v1": {
-    "vault": "0x4b1f94e45ff6fc5b3c105806d2ca4e2bede6afed",
-    "router": "0x383bff9ac95d6c0c4b38610406d1a1811109a065",
-    "boldVerifier": "0x0e4a43b1b04dd268c7272739e4951e099e938d3e"
+  "verifier": "0xb06028304345d9ed295d812AcA5F1430EC9808c9",
+  "boldVerifier": "0xa44d3b2DD5d3AC2990dD9D4FD848576F210fC903",
+  "market": "0xd2ae19b152661604e0dbcb49baea66bf9efc439c",
+  "vault": "0x406e9e177a59d408fe7b9ed778ed336e41ab0f8f",
+  "router": "0x3b32345392c5f713ef54d98c61283a7f3cdc3074",
+  "deployBlock": 314405411,
+  "marketOwnershipRenounced": "0xc2cf863cfcff2465e5055f76c1ad376862ca8d86c78d130b047969a3407118a1",
+  "history": {
+    "v1": {
+      "vault": "0x4b1f94e45ff6fc5b3c105806d2ca4e2bede6afed",
+      "router": "0x383bff9ac95d6c0c4b38610406d1a1811109a065",
+      "boldVerifier": "0x0e4a43b1b04dd268c7272739e4951e099e938d3e"
+    },
+    "v2": {
+      "chainId": 421614,
+      "usdg": "0xFFC95faa3d63Cde504a05B567C600B78C0b41892",
+      "verifier": "0xb06028304345d9ed295d812aca5f1430ec9808c9",
+      "market": "0xd112ea99a2664d65de013fcaf3a6ce1604a8c51b",
+      "vault": "0xb5aad1dfb95f4362121164f86dd9b69094ee492c",
+      "router": "0xa1b07789799b1b961b8b554b49429b0e97806c33",
+      "boldVerifier": "0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903"
+    }
   }
 }

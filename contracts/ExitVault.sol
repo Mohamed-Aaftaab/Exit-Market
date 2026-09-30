@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -55,6 +56,8 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
     uint16 public aprBps;
     uint256 public maxExitAmount;
     bool public acceptPending;
+    /// @notice Smallest exit the vault buys; defaults to one whole token of the asset.
+    uint256 public minExitAmount;
 
     uint256 private _idle;
     uint256 private _outstandingCost;
@@ -97,6 +100,7 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
     {
         market = market_;
         _setParams(DEFAULT_BASE_FEE_BPS, DEFAULT_APR_BPS, type(uint256).max, true);
+        _setMinExitAmount(10 ** IERC20Metadata(address(asset_)).decimals());
     }
 
     // ---------------------------------------------------------------- exit buying
@@ -105,6 +109,8 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
     function buyExit(ExitRecord calldata exit) external onlyMarket nonReentrant returns (uint256 price) {
         if (exit.l1Token != asset()) revert WrongToken(exit.l1Token);
         if (exit.pending && !acceptPending) revert PendingNotAccepted();
+        // Dust exits would fill the MAX_OPEN_POSITIONS slots for almost nothing (round 5, M-1).
+        if (exit.amount < minExitAmount) revert ExitTooSmall(exit.amount, minExitAmount);
         if (exit.amount > maxExitAmount || exit.amount > type(uint128).max) revert ExitTooLarge(exit.amount);
         if (_openKeys.length >= MAX_OPEN_POSITIONS) revert TooManyOpenPositions(MAX_OPEN_POSITIONS);
 
@@ -131,7 +137,8 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
         _idle -= price;
         _outstandingCost += price;
 
-        IERC20(asset()).safeTransfer(address(market), price);
+        // The market pulls exactly `price` right after this call (IExitBuyer).
+        IERC20(asset()).forceApprove(address(market), price);
         emit ExitPurchased(key, exit.amount, price);
     }
 
@@ -262,6 +269,11 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
         _setParams(baseFeeBps_, aprBps_, maxExitAmount_, acceptPending_);
     }
 
+    /// @inheritdoc IExitVault
+    function setMinExitAmount(uint256 minExitAmount_) external onlyOwner {
+        _setMinExitAmount(minExitAmount_);
+    }
+
     // ---------------------------------------------------------------- internals
 
     /// @dev Deposits mint only to the caller: locking someone else's shares would be a free griefing vector.
@@ -353,8 +365,14 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
         if (p.recordHash != keccak256(abi.encode(exit))) revert UnknownExit(key);
     }
 
+    function _setMinExitAmount(uint256 minExitAmount_) private {
+        if (minExitAmount_ == 0 || minExitAmount_ > maxExitAmount) revert BadParams();
+        minExitAmount = minExitAmount_;
+        emit MinExitAmountUpdated(minExitAmount_);
+    }
+
     function _setParams(uint16 baseFeeBps_, uint16 aprBps_, uint256 maxExitAmount_, bool acceptPending_) private {
-        if (baseFeeBps_ > MAX_BASE_FEE_BPS || aprBps_ > MAX_APR_BPS) revert BadParams();
+        if (baseFeeBps_ > MAX_BASE_FEE_BPS || aprBps_ > MAX_APR_BPS || maxExitAmount_ < minExitAmount) revert BadParams();
         baseFeeBps = baseFeeBps_;
         aprBps = aprBps_;
         maxExitAmount = maxExitAmount_;

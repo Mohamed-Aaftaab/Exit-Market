@@ -152,7 +152,7 @@ contract ExitVaultTest is ExitFixture {
         uint256 fee = _fee(price);
         uint256 assetsBefore = vault.totalAssets();
 
-        _sellTo(ws[0], seller, address(vault), price);
+        _sellTo(ws[0], seller, address(vault), price - fee);
 
         assertEq(usdg.balanceOf(seller), price - fee);
         assertEq(usdg.balanceOf(address(market)), fee);
@@ -171,8 +171,11 @@ contract ExitVaultTest is ExitFixture {
         ExitFixture.Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         uint256 price = vault.quote(_record(ws[0]));
 
-        vm.expectRevert(abi.encodeWithSelector(IExitMarket.PayoutBelowMin.selector, price, price + 1));
-        _sellTo(ws[0], seller, address(vault), price + 1);
+        uint256 net = price - _fee(price);
+
+        // The seller's floor is on what they receive after the market fee (round 5, M1).
+        vm.expectRevert(abi.encodeWithSelector(IExitMarket.PayoutBelowMin.selector, net, net + 1));
+        _sellTo(ws[0], seller, address(vault), net + 1);
     }
 
     function test_instantSell_confirmedExitSellsAtBaseFeeEvenWhenPendingNotAccepted() public {
@@ -183,7 +186,7 @@ contract ExitVaultTest is ExitFixture {
         _confirm(ws[0]);
         uint256 price = AMOUNT - (AMOUNT * BASE_FEE_BPS) / BPS;
 
-        _sellTo(ws[0], seller, address(vault), price);
+        _sellTo(ws[0], seller, address(vault), price - _fee(price));
 
         assertEq(usdg.balanceOf(seller), price - _fee(price));
         assertEq(_ownerOf(ws[0]), address(vault));
@@ -248,7 +251,7 @@ contract ExitVaultTest is ExitFixture {
     function _vaultBuys(Withdrawal memory w) private returns (ExitRecord memory rec, uint256 price) {
         rec = _record(w);
         price = vault.quote(rec);
-        _sellTo(w, w.claim.initialDestination, address(vault), price);
+        _sellTo(w, w.claim.initialDestination, address(vault), price - _fee(price));
     }
 
     function test_collect_booksFaceValueAndReleasesCostAfterPayout() public {

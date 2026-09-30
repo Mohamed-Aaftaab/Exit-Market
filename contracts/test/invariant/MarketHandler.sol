@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 import {ExitClaim, IExitMarket, PayoutProof} from "../../interfaces/IExitMarket.sol";
 import {ExitMarket} from "../../ExitMarket.sol";
@@ -283,9 +284,24 @@ contract MarketHandler is Test {
         // Every 4th sale is tiny so that the fee rounds down to zero.
         uint256 pay = paySeed % 4 == 0 ? _clamp(paySeed / 4, 1, 400) : _clamp(paySeed, 1, claimAt(i).amount * 2);
         TestBuyer tb = new TestBuyer(IERC20(address(usdg)), pay);
-        if (lieSeed % 2 == 0) tb.setClaimed(_clamp(lieSeed, 1, type(uint128).max)); // reported price is ignored
         _mint(usdg, address(tb), pay);
-        _sell(i, address(tb), pay, _clamp(minSeed, 0, pay));
+        if (lieSeed % 2 == 0) {
+            // The market pulls exactly the reported price, so a buyer overstating what it approved can never be
+            // paid for: the whole sale reverts and nothing moves (round 5, H-1).
+            tb.setClaimed(pay + _clamp(lieSeed, 1, type(uint128).max));
+            ExitClaim memory c = claimAt(i);
+            bytes memory data = abi.encode(IExitMarket.Action.SELL_TO_BUYER, c, abi.encode(address(tb), uint256(0)));
+            _mustRevert(
+                shadowOwner[i],
+                address(gateway),
+                abi.encodeCall(gateway.transferExitAndCall, (i + 1, c.initialDestination, address(market), "", data)),
+                IERC20Errors.ERC20InsufficientAllowance.selector,
+                "hostile:overclaim"
+            );
+            return _sync(NONE);
+        }
+        // The seller's floor is net of the fee.
+        _sell(i, address(tb), pay, _clamp(minSeed, 0, pay - (pay * modelFeeBps) / BPS));
     }
 
     function _sell(uint256 i, address tb, uint256 pay, uint256 minPayout) internal {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
+import {IBoldRollup} from "../../interfaces/IBoldRollup.sol";
 import {ExitMarket} from "../../ExitMarket.sol";
 import {BoldRootVerifier} from "../../verifiers/BoldRootVerifier.sol";
 import {IL1ArbitrumExtendedGateway} from "../../interfaces/IArbitrumBridge.sol";
@@ -21,10 +22,20 @@ contract ArbOneBoldForkTest is Test {
     IL1ArbitrumExtendedGateway private gateway = IL1ArbitrumExtendedGateway(F.L1_GATEWAY);
     bool private enabled;
 
+    /// @dev AssertionStatus.Confirmed in the BOLD rollup.
+    uint8 private constant CONFIRMED = 2;
+
     function setUp() public {
         enabled = vm.envOr("FORK_TESTS", false);
         if (!enabled) return;
         vm.createSelectFork(vm.envOr("ETH_RPC_URL", RPC));
+        // The fixture is a real withdrawal that was pending when recorded. Once its assertion confirms on mainnet
+        // there is nothing pending left to prove: skip (loudly) instead of failing, and say how to refresh it.
+        if (IBoldRollup(F.ROLLUP).getAssertion(F.ASSERTION_HASH).status == CONFIRMED) {
+            console.log("ArbOne fixture expired (assertion confirmed): run scripts/dev/makeArbOneFixture.ts");
+            enabled = false;
+            return;
+        }
 
         MockERC20 usd = new MockERC20("USD", "USD", 6);
         market = new ExitMarket(address(usd), address(this), 25, address(this));

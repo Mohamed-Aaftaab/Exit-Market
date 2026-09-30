@@ -12,11 +12,13 @@ interface IExitVault is IExitBuyer {
     event ExitWrittenOff(bytes32 indexed key, uint256 cost);
     event WriteOffFinalized(bytes32 indexed key);
     event ParamsUpdated(uint16 baseFeeBps, uint16 aprBps, uint256 maxExitAmount, bool acceptPending);
+    event MinExitAmountUpdated(uint256 minExitAmount);
 
     error OnlyMarket();
     error WrongToken(address l1Token);
     error PendingNotAccepted();
     error ExitTooLarge(uint256 amount);
+    error ExitTooSmall(uint256 amount, uint256 minExitAmount);
     error InsufficientLiquidity(uint256 needed, uint256 idle);
     /// @notice The vault already carries MAX_OPEN_POSITIONS uncollected exits; the sale reverts (fail closed).
     error TooManyOpenPositions(uint256 max);
@@ -53,8 +55,12 @@ interface IExitVault is IExitBuyer {
     ///         IMPAIRMENT_WINDOW) has elapsed, re-enabling deposits. A late genuine payout can still be collected.
     function finalizeWriteOff(ExitRecord calldata exit) external;
 
-    /// @notice Owner: pricing and risk parameters (capped).
+    /// @notice Owner: pricing and risk parameters (capped). The owner cannot move deposits or exits.
     function setParams(uint16 baseFeeBps, uint16 aprBps, uint256 maxExitAmount, bool acceptPending) external;
+
+    /// @notice Owner: smallest exit the vault buys (non-zero, at most maxExitAmount); keeps dust exits from
+    ///         filling the MAX_OPEN_POSITIONS slots.
+    function setMinExitAmount(uint256 minExitAmount) external;
 
     /// @notice USDG available for withdrawals and new purchases.
     function idleAssets() external view returns (uint256);

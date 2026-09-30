@@ -48,17 +48,20 @@ struct PayoutProof {
 }
 
 /// @notice Instant-exit counterparty (e.g. ExitVault). Called by the market inside the seller's
-///         transferExitAndCall; must transfer the price in the market's payment token to the market.
+///         transferExitAndCall; must approve the market for `price` of the payment token, which the market then
+///         pulls with transferFrom.
 interface IExitBuyer {
     /// @param exit verified exit being sold; ownership is redirected to the buyer right after this call
-    /// @return price amount of payment token transferred to the market (the market measures the real delta)
+    /// @return price payment-token amount the market pulls from the buyer (exactly this; the sale reverts if the
+    ///         pull fails). Pulling, not measuring the market's balance, means no other token inflow during this
+    ///         call can be counted as the price (round 5, H-1).
     function buyExit(ExitRecord calldata exit) external returns (uint256 price);
 }
 
 interface IExitMarket {
     /// @notice First field of the hook data: abi.encode(uint8(Action), ExitClaim, params).
     ///         LIST params = abi.encode(uint256 price, uint64 expiry);
-    ///         SELL_TO_BUYER params = abi.encode(address buyer, uint256 minPayout).
+    ///         SELL_TO_BUYER params = abi.encode(address buyer, uint256 minPayout), minPayout net of the fee.
     enum Action {
         LIST,
         SELL_TO_BUYER
@@ -122,8 +125,11 @@ interface IExitMarket {
     error NotListed(bytes32 id);
     error ListingExpired(bytes32 id);
     error PriceAboveMax(uint256 price, uint256 maxPrice);
+    /// @param payout what the seller would receive (price minus the market fee)
     error PayoutBelowMin(uint256 payout, uint256 minPayout);
     error ZeroPrice();
+    /// @notice The buyer's payment arrived short (fee-on-transfer or rebasing payment token): fail closed.
+    error PaymentShortfall(uint256 received, uint256 price);
     error NotSeller();
     /// @notice The exit's Outbox slot is not spent by THIS exit under a confirmed root.
     error ExitNotPaidOut(uint256 index);

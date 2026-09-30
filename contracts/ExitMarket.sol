@@ -26,7 +26,10 @@ import {ExitLeaf} from "./libraries/ExitLeaf.sol";
 ///         confirmed root or an unresolved rollup node) and then listed or sold instantly to an IExitBuyer.
 /// @dev Trust model: the owner chooses which gateways and which root verifier to trust, and sets a fee
 ///      capped at MAX_FEE_BPS (snapshotted per listing). Child gateway, outbox and rollup are derived from
-///      the gateway itself and, with the verifier, frozen on first allow. The owner cannot move funds.
+///      the gateway itself and, with the verifier, frozen on first allow. An owner who allowed a hostile
+///      gateway could fake exits and drain buyers, so the deployment (scripts/deployV3.ts) allows the real
+///      Arbitrum gateways and then RENOUNCES ownership in the same script: the live market has no owner, and
+///      nobody can add a gateway, change the fee or disallow a gateway after that (round 5, H-2).
 ///      Payout safety: an Outbox spent bit is keyed by index only, so tokens are released only when the
 ///      index provably holds this exit's item under a CONFIRMED root (confirmed roots are canonical).
 contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, ReentrancyGuard {
@@ -313,14 +316,21 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
     function _sellToBuyer(bytes32 id, ExitRecord memory exit, address seller, bytes memory params) private {
         (address buyer, uint256 minPayout) = abi.decode(params, (address, uint256));
 
-        // Measure what the buyer actually delivered rather than trusting its return value.
-        uint256 balanceBefore = _paymentToken.balanceOf(address(this));
-        IExitBuyer(buyer).buyExit(exit);
-        uint256 price = _paymentToken.balanceOf(address(this)) - balanceBefore;
+        // The buyer names its price and the market pulls exactly that from the buyer. The buyer is chosen by the
+        // seller and runs arbitrary code in buyExit, so the price must never be a balance change measured around
+        // that call: another listing's Outbox payout landing mid-call would otherwise be paid out as this
+        // seller's price (round 5, H-1).
+        uint256 price = IExitBuyer(buyer).buyExit(exit);
         if (price == 0) revert ZeroPrice();
-        if (price < minPayout) revert PayoutBelowMin(price, minPayout);
-
         uint256 fee = (price * feeBps) / BPS;
+        // The seller's slippage bound is on what the seller receives, after the fee.
+        if (price - fee < minPayout) revert PayoutBelowMin(price - fee, minPayout);
+
+        // Only the payment token's own code runs inside this window, so the delta is exactly the pull.
+        uint256 balanceBefore = _paymentToken.balanceOf(address(this));
+        _paymentToken.safeTransferFrom(buyer, address(this), price);
+        uint256 received = _paymentToken.balanceOf(address(this)) - balanceBefore;
+        if (received != price) revert PaymentShortfall(received, price);
         accruedFees += fee;
 
         _transferExit(exit.gateway, exit.exitNum, exit.initialDestination, buyer);

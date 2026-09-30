@@ -136,7 +136,7 @@ contract ExitIntentRouterReclaimTest is IntentFixture {
         uint256 price = vault.quote(_record(ws[0]));
         _reclaimAs(user, ws[0]);
 
-        _sellTo(ws[0], user, address(vault), price);
+        _sellTo(ws[0], user, address(vault), price - _fee(price));
 
         assertEq(usdg.balanceOf(user), price - _fee(price));
         assertEq(_ownerOf(ws[0]), address(vault));
