@@ -10,7 +10,7 @@ import {
   tokenSymbol,
   xaiAddressUrl,
 } from "@/lib/explorer/display";
-import type { ExitStatus, ExplorerExit } from "@/lib/explorer/status";
+import { marketRole, type ExitStatus, type ExplorerExit } from "@/lib/explorer/status";
 
 const PILL: Record<ExitStatus, string> = {
   "awaiting-assertion": "bg-warn-soft text-warn",
@@ -50,7 +50,8 @@ export function AddressLink({ address, href }: { address: Address; href: string 
 }
 
 export function StatusPill({ exit }: { exit: ExplorerExit }) {
-  const label = exit.status === "transferred" && exit.viaExitMarket ? "Sold via Exit Market" : LABEL[exit.status];
+  const role = marketRole(exit);
+  const label = role === "listed" ? "Listed on Exit Market" : role === "sold" ? "Sold via Exit Market" : LABEL[exit.status];
   return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${PILL[exit.status]}`}>{label}</span>;
 }
 

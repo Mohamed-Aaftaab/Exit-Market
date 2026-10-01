@@ -58,6 +58,16 @@ export function stageOf(position: bigint, spent: boolean, rollup: RollupState): 
   return { stage: "in-window", blocksLeft };
 }
 
+/**
+ * Exit Market's part in a redirected, unclaimed exit: "listed" while the market itself holds it (a listing nobody has
+ * bought yet), "sold" once it passed through the market to a buyer, undefined when the market was never involved.
+ */
+export function marketRole(exit: Pick<ExplorerExit, "status" | "ownerContract" | "viaExitMarket">): "listed" | "sold" | undefined {
+  if (exit.status !== "transferred") return undefined;
+  if (exit.ownerContract === "market") return "listed";
+  return exit.viaExitMarket ? "sold" : undefined;
+}
+
 export function statusOf(stage: ExitStage, transferred: boolean): ExitStatus {
   if (stage === "claimed") return "claimed";
   if (transferred) return "transferred";
