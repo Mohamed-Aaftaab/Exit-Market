@@ -5,6 +5,26 @@ import { shortHex } from "@/lib/format";
 
 type Step = { label: string; detail: string; ok: boolean };
 
+/** A confirmed root needs one check; a pending one needs the node's commitment and an undisputed chain. */
+function rootSteps(sale: PreparedSale): Step[] {
+  const p = sale.withdrawal.proof;
+  if (!sale.checks.rootPending) {
+    return [{ label: "Root confirmed in the Outbox", detail: `Outbox.roots(${shortHex(p.sendRoot)}) is set: nothing left to wait for`, ok: sale.checks.rootValid }];
+  }
+  return [
+    {
+      label: `Root committed by pending node #${p.nodeNum}`,
+      detail: `confirmData = keccak(blockHash, sendRoot) on the rollup`,
+      ok: sale.checks.nodeCommitsRoot,
+    },
+    {
+      label: "No rival on the pending chain",
+      detail: `verifier walks node #${p.nodeNum} back to the latest confirmed node: no level is disputed`,
+      ok: sale.checks.rootValid,
+    },
+  ];
+}
+
 function stepsOf(sale: PreparedSale): Step[] {
   const p = sale.withdrawal.proof;
   return [
@@ -18,16 +38,7 @@ function stepsOf(sale: PreparedSale): Step[] {
       detail: `leaf ${shortHex(sale.record.itemHash)} at #${p.index} · ${p.merkleProof.length}-step proof → root ${shortHex(p.sendRoot)}`,
       ok: sale.checks.minimalPath,
     },
-    {
-      label: `Root committed by pending node #${p.nodeNum}`,
-      detail: `confirmData = keccak(blockHash, sendRoot) on the rollup`,
-      ok: sale.checks.nodeCommitsRoot && sale.checks.nodeUnresolved,
-    },
-    {
-      label: "No rival on the pending chain",
-      detail: `verifier walks node #${p.nodeNum} back to the latest confirmed node: no level is disputed`,
-      ok: sale.checks.uncontested,
-    },
+    ...rootSteps(sale),
     {
       label: "Not yet claimed",
       detail: `Outbox.isSpent(${p.index}) = ${!sale.checks.unspent}`,

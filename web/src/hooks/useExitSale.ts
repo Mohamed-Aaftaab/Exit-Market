@@ -5,24 +5,27 @@ import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "w
 import { arbitrumSepolia } from "wagmi/chains";
 import { encodePacked, keccak256, type Hash, type PublicClient } from "viem";
 import { buildExitProof, type Withdrawal } from "@shared/exitProof.ts";
-import { legacyRootVerifierAbi } from "@shared/abis.ts";
-import { encodeSellToBuyer, netOfMarketFee, toExitRecord } from "@shared/hookData.ts";
+import { encodeSellToBuyer, netOfMarketFee } from "@shared/hookData.ts";
+import { exitRecordFor } from "@shared/marketReads.ts";
 import { DEPLOYMENT, XAI_TESTNET, marketAbi, outboxAbi, parentGatewayAbi, rollupAbi, vaultAbi } from "@/lib/contracts";
 import { xaiTestnet } from "@/lib/wagmi";
 import type { WithdrawalRow } from "./useWithdrawals";
 
 export interface PreparedSale {
   withdrawal: Withdrawal;
-  record: ReturnType<typeof toExitRecord>;
+  /** The ExitRecord the market will build, from its own verifier's verdict (pending or confirmed, deadline). */
+  record: Awaited<ReturnType<typeof exitRecordFor>>["record"];
   /** Checks the market will repeat on-chain, evaluated client-side for the proof trace. */
   checks: {
     ownerIsSeller: boolean;
-    nodeCommitsRoot: boolean;
-    nodeUnresolved: boolean;
-    /** The market's own verifier accepts the root: for a pending node, no rival anywhere on its pending chain. */
-    uncontested: boolean;
     minimalPath: boolean;
     unspent: boolean;
+    /** The market's verifier accepts the root (for a pending node: also no rival anywhere on its pending chain). */
+    rootValid: boolean;
+    /** The root is a pending node's rather than one confirmed in the Outbox. */
+    rootPending: boolean;
+    /** For a pending root: the node's confirmData commits to (blockHash, sendRoot). */
+    nodeCommitsRoot: boolean;
   };
   deadlineBlock: bigint;
   currentL1Block: bigint;
@@ -31,6 +34,8 @@ export interface PreparedSale {
   vaultIdle: bigint;
   marketFeeBps: number;
 }
+
+const GATEWAYS = { parent: XAI_TESTNET.tokenBridge.parentErc20Gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway };
 
 async function prepareSale(parent: PublicClient, child: PublicClient, row: WithdrawalRow): Promise<PreparedSale> {
   const { market, vault } = DEPLOYMENT;
@@ -45,33 +50,14 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
   });
   const p = withdrawal.proof;
 
-  const [node, firstUnresolved, feeBps, l1Block, spent, gatewayConfig] = await Promise.all([
+  const [{ record, verdict }, node, feeBps, l1Block, spent] = await Promise.all([
+    exitRecordFor(parent, market, GATEWAYS, withdrawal),
     parent.readContract({ address: XAI_TESTNET.ethBridge.rollup, abi: rollupAbi, functionName: "getNode", args: [p.nodeNum] }),
-    parent.readContract({ address: XAI_TESTNET.ethBridge.rollup, abi: rollupAbi, functionName: "firstUnresolvedNode" }),
     parent.readContract({ address: market, abi: marketAbi, functionName: "feeBps" }),
     // Inside Arbitrum's EVM, block.number is the L1 block; the RPC exposes it as l1BlockNumber.
     parent.getBlock().then((b) => BigInt((b as unknown as { l1BlockNumber: string }).l1BlockNumber)),
     parent.readContract({ address: XAI_TESTNET.ethBridge.outbox, abi: outboxAbi, functionName: "isSpent", args: [p.index] }),
-    parent.readContract({
-      address: market,
-      abi: marketAbi,
-      functionName: "getGatewayConfig",
-      args: [XAI_TESTNET.tokenBridge.parentErc20Gateway],
-    }),
   ]);
-  const [rootValid] = await parent.readContract({
-    address: gatewayConfig.verifier,
-    abi: legacyRootVerifierAbi,
-    functionName: "verifyRoot",
-    args: [gatewayConfig.rollup, gatewayConfig.outbox, p.sendRoot, p.nodeNum, p.blockHash],
-  });
-
-  const record = toExitRecord(
-    withdrawal,
-    { parent: XAI_TESTNET.tokenBridge.parentErc20Gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway },
-    node.deadlineBlock,
-    true,
-  );
   const [vaultQuote, vaultIdle] = await Promise.all([
     parent.readContract({ address: vault, abi: vaultAbi, functionName: "quote", args: [record] }),
     parent.readContract({ address: vault, abi: vaultAbi, functionName: "idleAssets" }),
@@ -82,20 +68,19 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
     record,
     checks: {
       ownerIsSeller: row.owner.toLowerCase() === row.initialDestination.toLowerCase(),
-      nodeCommitsRoot: node.confirmData === keccak256(encodePacked(["bytes32", "bytes32"], [p.blockHash, p.sendRoot])),
-      nodeUnresolved: p.nodeNum >= firstUnresolved,
-      uncontested: rootValid,
       minimalPath: p.index < 2n ** BigInt(p.merkleProof.length),
       unspent: !spent,
+      rootValid: verdict.valid,
+      rootPending: verdict.pending,
+      nodeCommitsRoot: node.confirmData === keccak256(encodePacked(["bytes32", "bytes32"], [p.blockHash, p.sendRoot])),
     },
-    deadlineBlock: node.deadlineBlock,
+    deadlineBlock: verdict.deadlineBlock,
     currentL1Block: l1Block,
     vaultQuote,
     vaultIdle,
     marketFeeBps: feeBps,
   };
 }
-
 /** Builds the proof and vault quote for a sellable withdrawal. */
 export function usePreparedSale(row: WithdrawalRow | undefined) {
   const parent = usePublicClient({ chainId: arbitrumSepolia.id });

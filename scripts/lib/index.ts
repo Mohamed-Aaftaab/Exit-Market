@@ -39,6 +39,7 @@ export {
   type BoldAssertionState,
   type CoveringAssertion,
 } from "./boldProof.ts";
+export { exitRecordFor, rootVerdict, type RootVerdict } from "./marketReads.ts";
 export { latestConfirmedRoot, outboxMessage, outboxProof, type ConfirmedRoot } from "./outbox.ts";
 export {
   ListingStatus,

@@ -6,39 +6,13 @@ import { formatUnits, parseAbi, type Hex } from "viem";
 import { exitMarketAbi, exitVaultAbi } from "../lib/abis.ts";
 import { getClients, loadDeployment } from "../lib/clients.ts";
 import { buildExitProof } from "../lib/exitProof.ts";
-import { encodeSellToBuyer, netOfMarketFee, toExitRecord } from "../lib/hookData.ts";
+import { encodeSellToBuyer, netOfMarketFee } from "../lib/hookData.ts";
+import { exitRecordFor } from "../lib/marketReads.ts";
 import { XAI_TESTNET } from "../lib/networks.ts";
 
 const gatewayAbi = parseAbi([
   "function transferExitAndCall(uint256 exitNum, address initialDestination, address newDestination, bytes newData, bytes data)",
 ]);
-const rollupAbi = [
-  {
-    type: "function",
-    name: "getNode",
-    stateMutability: "view",
-    inputs: [{ type: "uint64" }],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "stateHash", type: "bytes32" },
-          { name: "challengeHash", type: "bytes32" },
-          { name: "confirmData", type: "bytes32" },
-          { name: "prevNum", type: "uint64" },
-          { name: "deadlineBlock", type: "uint64" },
-          { name: "noChildConfirmedBeforeBlock", type: "uint64" },
-          { name: "stakerCount", type: "uint64" },
-          { name: "childStakerCount", type: "uint64" },
-          { name: "firstChildBlock", type: "uint64" },
-          { name: "latestChildNumber", type: "uint64" },
-          { name: "createdAtBlock", type: "uint64" },
-          { name: "nodeHash", type: "bytes32" },
-        ],
-      },
-    ],
-  },
-] as const;
 
 async function main() {
   const withdrawalTx = process.argv[2] as Hex | undefined;
@@ -59,13 +33,9 @@ async function main() {
     throw new Error(`This wallet does not own exit #${w.exitNum}`);
   }
 
-  const node = await parent.readContract({
-    address: XAI_TESTNET.ethBridge.rollup,
-    abi: rollupAbi,
-    functionName: "getNode",
-    args: [w.proof.nodeNum],
-  });
-  const record = toExitRecord(w, { parent: gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway }, node.deadlineBlock, true);
+  // The record exactly as the market will build it, from its own verifier's verdict (pending or confirmed).
+  const { record, verdict } = await exitRecordFor(parent, d.market, { parent: gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway }, w);
+  if (!verdict.valid) throw new Error(`The market's verifier refuses this root (node ${w.proof.nodeNum} may be contested); retry later`);
   // Quote only rises as the deadline approaches, so today's quote is a safe floor; the floor is net of the fee.
   const [quote, feeBps] = await Promise.all([
     parent.readContract({ address: d.vault, abi: exitVaultAbi, functionName: "quote", args: [record] }),
@@ -73,7 +43,7 @@ async function main() {
   ]);
   const minPayout = netOfMarketFee(quote, feeBps);
 
-  console.log(`Exit #${w.exitNum}: ${formatUnits(w.proof.amount, 6)} USDG, proven against pending node ${w.proof.nodeNum}`);
+  console.log(`Exit #${w.exitNum}: ${formatUnits(w.proof.amount, 6)} USDG, proven against ${verdict.pending ? `pending node ${w.proof.nodeNum}` : "a confirmed root"}`);
   console.log(`Vault quote: ${formatUnits(quote, 6)} USDG; you receive at least ${formatUnits(minPayout, 6)} after the market fee`);
 
   const hash = await parentWallet.writeContract({
