@@ -64,46 +64,73 @@ export function parseRelayRequest(body: unknown, expect: { gateway: Address; buy
   return { ok: true, value: { withdrawalTx: b.withdrawalTx, order, signature: b.signature } };
 }
 
-const hits = new Map<string, number[]>();
-
-function pruneStale(nowMs: number): void {
-  for (const [key, times] of hits) {
-    if (times.every((t) => nowMs - t >= RATE_WINDOW_MS)) hits.delete(key);
-  }
+export interface RateLimiter {
+  /** True when `clientKey` may make another request now. */
+  allow(clientKey: string, nowMs?: number): boolean;
+  /** Clients currently remembered (for tests and monitoring). */
+  size(): number;
 }
 
-/** Number of clients the limiter currently remembers (for tests and monitoring). */
-export function trackedClientCount(): number {
-  return hits.size;
+/** Sliding-window limit per client key, with memory bounded at MAX_TRACKED_CLIENTS. State is per server instance. */
+export function createRateLimiter(windowMs: number, maxRequests: number): RateLimiter {
+  const hits = new Map<string, number[]>();
+  const pruneStale = (nowMs: number) => {
+    for (const [key, times] of hits) {
+      if (times.every((t) => nowMs - t >= windowMs)) hits.delete(key);
+    }
+  };
+  return {
+    allow(clientKey, nowMs = Date.now()) {
+      if (hits.size >= MAX_TRACKED_CLIENTS) pruneStale(nowMs);
+      const recent = (hits.get(clientKey) ?? []).filter((t) => nowMs - t < windowMs);
+      if (recent.length >= maxRequests) {
+        hits.set(clientKey, recent);
+        return false;
+      }
+      hits.set(clientKey, [...recent, nowMs]);
+      return true;
+    },
+    size: () => hits.size,
+  };
 }
 
-/** Sliding-window limit per client key; true when the request may proceed. */
+const relayLimiter = createRateLimiter(RATE_WINDOW_MS, RATE_MAX_REQUESTS);
+
+/** The relayer's per-IP limit; true when the request may proceed. */
 export function allowRequest(clientKey: string, nowMs = Date.now()): boolean {
-  if (hits.size >= MAX_TRACKED_CLIENTS) pruneStale(nowMs);
-  const recent = (hits.get(clientKey) ?? []).filter((t) => nowMs - t < RATE_WINDOW_MS);
-  if (recent.length >= RATE_MAX_REQUESTS) {
-    hits.set(clientKey, recent);
-    return false;
-  }
-  hits.set(clientKey, [...recent, nowMs]);
-  return true;
+  return relayLimiter.allow(clientKey, nowMs);
 }
 
-const inFlight = new Set<string>();
-let queue: Promise<unknown> = Promise.resolve();
+/** Number of clients the relayer's limiter currently remembers. */
+export function trackedClientCount(): number {
+  return relayLimiter.size();
+}
+
+/** Client key for rate limiting: the first forwarded address (Vercel sets it), else the direct one. */
+export function clientKeyOf(request: Request): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
+}
+
 
 /**
  * Runs `task` for `key` unless one is already running for it (returns undefined then), strictly one task at a
  * time across all keys, so the single relayer account never races its own nonce.
  */
-export async function runExclusive<T>(key: string, task: () => Promise<T>): Promise<T | undefined> {
-  if (inFlight.has(key)) return undefined;
-  inFlight.add(key);
-  const run = queue.then(task, task);
-  queue = run.catch(() => undefined);
-  try {
-    return await run;
-  } finally {
-    inFlight.delete(key);
-  }
+export const runExclusive = createExclusiveRunner();
+
+/** A runner with its own queue: one per hot wallet, since tasks of different accounts need not wait on each other. */
+export function createExclusiveRunner() {
+  const inFlight = new Set<string>();
+  let queue: Promise<unknown> = Promise.resolve();
+  return async function run<T>(key: string, task: () => Promise<T>): Promise<T | undefined> {
+    if (inFlight.has(key)) return undefined;
+    inFlight.add(key);
+    const next = queue.then(task, task);
+    queue = next.catch(() => undefined);
+    try {
+      return await next;
+    } finally {
+      inFlight.delete(key);
+    }
+  };
 }

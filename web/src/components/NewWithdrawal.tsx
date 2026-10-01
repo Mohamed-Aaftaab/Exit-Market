@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import { TestFunds } from "@/components/TestFunds";
 import { useGaslessExit, type GaslessIntent } from "@/hooks/useGaslessExit";
 import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, childRouterAbi } from "@/lib/contracts";
 import { errorText, parseUsdgInput, usdg } from "@/lib/format";
@@ -11,7 +13,7 @@ import { xaiTestnet } from "@/lib/wagmi";
 function IntentState({ intent, onSign, isBusy }: { intent: GaslessIntent; onSign: () => void; isBusy: boolean }) {
   if (intent.status === "settled" && intent.settleTx) {
     return (
-      <a className="text-ok underline" href={`https://sepolia.arbiscan.io/tx/${intent.settleTx}`} target="_blank" rel="noopener noreferrer">
+      <a className="text-ok underline" href={`${arbitrumSepolia.blockExplorers.default.url}/tx/${intent.settleTx}`} target="_blank" rel="noopener noreferrer">
         settled ↗
       </a>
     );
@@ -102,6 +104,7 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
 
   return (
     <div className="space-y-3 border-t border-line p-4">
+      {address && <TestFunds address={address} />}
       {canGasless && (
         <fieldset className="flex gap-4 text-sm" disabled={isBusy}>
           <legend className="sr-only">Withdrawal mode</legend>

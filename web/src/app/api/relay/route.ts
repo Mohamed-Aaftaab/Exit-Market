@@ -12,7 +12,7 @@ import { InvalidWithdrawalError } from "@shared/exitProof.ts";
 import { SettlementRevertedError, trySettle } from "@shared/relay.ts";
 import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "@shared/networks.ts";
 import { DEPLOYMENT } from "@/lib/contracts";
-import { allowRequest, parseRelayRequest, runExclusive, type RelayRequest } from "@/lib/relayGuard";
+import { allowRequest, clientKeyOf, parseRelayRequest, runExclusive, type RelayRequest } from "@/lib/relayGuard";
 
 // Server-only relayer: settles gasless exits on the user's behalf and earns the order's relayer fee.
 const MAX_BODY_BYTES = 8_192;
@@ -22,10 +22,6 @@ export const maxDuration = 60;
 
 function bad(message: string, status = 400) {
   return Response.json({ status: "error", error: message }, { status });
-}
-
-function clientKey(request: Request): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
 }
 
 async function readJson(request: Request): Promise<unknown> {
@@ -57,7 +53,7 @@ export async function POST(request: Request) {
   const key = process.env.RELAYER_PRIVATE_KEY;
   const router = DEPLOYMENT.router;
   if (!key || !router || !DEPLOYMENT.vault) return bad("Relayer not configured", 503);
-  if (!allowRequest(clientKey(request))) return bad("Too many requests", 429);
+  if (!allowRequest(clientKeyOf(request))) return bad("Too many requests", 429);
 
   let body: unknown;
   try {
