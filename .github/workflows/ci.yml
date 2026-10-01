@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -26,3 +27,17 @@ jobs:
       - run: npm run lint -w web
       # The app builds with no configuration: addresses come from deployments/arbitrumSepolia.json.
       - run: npm run build -w web
+
+  # The Stylus port of the proof core: its Rust tests (one rebuilds a live Xai Testnet send root from a real
+  # withdrawal). They run on Linux; natively on Windows the MSVC linker rejects the WASM library's Stylus host imports.
+  stylus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: stylus/exit-proof
+    steps:
+      - uses: actions/checkout@v5
+      # The toolchain pinned in rust-toolchain.toml.
+      - run: rustup toolchain install
+      - run: cargo test --locked

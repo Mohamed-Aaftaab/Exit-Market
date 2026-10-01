@@ -191,6 +191,8 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 
 ## Run it
 
+Needs Node.js 24 (see `.nvmrc`): the scripts and tests run TypeScript directly with Node's built-in type stripping.
+
 ```bash
 npm install
 npx hardhat test solidity                      # 440 tests

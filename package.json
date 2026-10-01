@@ -5,6 +5,9 @@
   "license": "MIT",
   "repository": "github:Mohamed-Aaftaab/Exit-Market",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "hardhat build",
     "test": "hardhat test",
