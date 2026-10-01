@@ -111,7 +111,6 @@ export function clientKeyOf(request: Request): string {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
 }
 
-
 /**
  * Runs `task` for `key` unless one is already running for it (returns undefined then), strictly one task at a
  * time across all keys, so the single relayer account never races its own nonce.

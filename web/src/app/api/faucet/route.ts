@@ -44,13 +44,15 @@ async function drip(key: Hex, fromBlock: bigint, to: Address) {
   const plan = planDrip({ alreadyFunded: previous.logs.length > 0, recipientGas, faucetUsdg, faucetGas });
   if (!plan.ok) return plan;
 
-  const usdgTx = await wallet.writeContract({ address: usdg, abi: erc20Abi, functionName: "transfer", args: [to, plan.usdg] });
-  if ((await child.waitForTransactionReceipt({ hash: usdgTx })).status !== "success") throw new Error(`USDG transfer reverted: ${usdgTx}`);
+  // Gas first: the USDG transfer is what marks an address as funded, so if either step fails the address can retry
+  // and is never left marked funded without the gas to use the USDG (a retry sends no more gas than it lacks).
   let gasTx: Hash | undefined;
   if (plan.gas > 0n) {
     gasTx = await wallet.sendTransaction({ to, value: plan.gas });
     if ((await child.waitForTransactionReceipt({ hash: gasTx })).status !== "success") throw new Error(`Gas transfer reverted: ${gasTx}`);
   }
+  const usdgTx = await wallet.writeContract({ address: usdg, abi: erc20Abi, functionName: "transfer", args: [to, plan.usdg] });
+  if ((await child.waitForTransactionReceipt({ hash: usdgTx })).status !== "success") throw new Error(`USDG transfer reverted: ${usdgTx}`);
   return { ok: true as const, usdg: plan.usdg.toString(), gas: plan.gas.toString(), usdgTx, gasTx };
 }
 
