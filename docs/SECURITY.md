@@ -99,6 +99,26 @@ New surface reviewed: **listings in the app** (exact approval, `buy` capped at t
 the exit on purchase), **the keeper** (executes any verified exit once its root confirms, then collects or settles
 only what it positively identifies as the vault's or a still-listed exit), **the test faucet** (below).
 
+### Pre-submission audits (2026-10-01): app, SDK and operations, no contract changes
+
+After v4, six more end-to-end passes (read-only first, then fixes) covered the app, the TypeScript library, the
+keeper, CI, the docs and the live deployment. No contract needed a change. The findings that mattered:
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Medium | A fast exit smaller than the vault's minimum withdrew into the router, where the vault could never buy it and the gasless seller had no gas to take it back | The app reads the vault's min/max before the irreversible withdrawal and refuses outside them (`web/src/lib/exitLimits.ts`, tested) |
+| Medium | Nothing collected matured exits unless someone ran the keeper by hand, so the vault's liquidity stopped refilling after a few sales | The keeper runs around the clock on GitHub Actions with its own gas-only key; each run hands the next one over, retried, even after a failure (see Residual risks) |
+| Medium | Selling an auto-selected withdrawal lost its receipt a second later | The desk pins the withdrawal as the sale starts (verified with a live sale) |
+| Low | The keeper wrote off a rejected vault exit only while the confirmed root had not reached its index; once it had, collect failed forever and deposits stayed paused | `keeperStep` (`scripts/lib/keeperPlan.ts`, tested) decides write-offs on rejection alone; `outboxRootOf` checks the confirmed root holds the exit (golden-tested on a live Xai root) |
+| Low | Transient reverts (vault liquidity, a disputed node) marked fast exits failed; an expired order was not offered a fresh signature | Kept waiting (`transientSettlementWait`); expiry offers "sign a new order" |
+| Low | BOLD claims preferred a pending assertion even when a confirmed one covered the withdrawal | `pickCovering`: confirmed first, as for legacy nodes (tested) |
+| Low | The keeper job left the GitHub token in `.git/config` and ran dependency install scripts | Checkout without persisted credentials; `npm ci --ignore-scripts` |
+
+Also checked, with nothing found: every real key against the full git history and the live site's pages and scripts
+(none present), production dependencies (`npm audit --omit=dev`: 0 vulnerabilities), the 26 linked transactions (all
+succeeded on-chain), every relative Markdown link, and the figures repeated across the README, site, pitch, research
+and video. The contracts are verified on Sourcify (exact match) and shown on Blockscout.
+
 ## Vault LP-fairness findings H1-H3 (fixed; regression tests `test_H1_/H2_/H3_*` in Exploits.t.sol)
 
 These affected fairness **between vault LPs**, never sellers, buyers or market funds. No drain, no insolvency,
