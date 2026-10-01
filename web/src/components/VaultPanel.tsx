@@ -139,8 +139,9 @@ export function VaultPanel() {
   if (!vault) return <p className="p-5 text-sm text-muted">Vault not deployed yet.</p>;
 
   // The vault reports 0 withdrawable while shares are locked and while it has no idle USDG; say which.
+  // Nothing until the chain's clock is known, so a locked wallet never briefly reads as waiting for liquidity.
   const lockNote =
-    stats.withdrawable !== 0n || !stats.hasShares
+    stats.withdrawable !== 0n || !stats.hasShares || stats.isLocked === undefined
       ? undefined
       : stats.isLocked && stats.unlockTime !== undefined
         ? `Your shares unlock ${new Date(stats.unlockTime * 1000).toLocaleString()}.`
@@ -150,6 +151,9 @@ export function VaultPanel() {
   async function deposit(assets: bigint, setStatus: (s: string) => void) {
     // Checked before the approval: a paused vault would take the approval and then revert the deposit.
     if (stats.depositsPaused) throw new Error(DEPOSITS_PAUSED);
+    if (stats.walletUsdg !== undefined && assets > stats.walletUsdg) {
+      throw new Error(`Your wallet holds ${usdg(stats.walletUsdg)} USDG on Arbitrum Sepolia`);
+    }
     setStatus("Approving USDG…");
     await sendTx(() =>
       writeContractAsync({ chainId: arbitrumSepolia.id, address: ARBITRUM_SEPOLIA.usdg, abi: erc20Abi, functionName: "approve", args: [vault!, assets] }),

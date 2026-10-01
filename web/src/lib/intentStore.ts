@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 
 /**
  * Pure state rules for gasless exits kept in the browser (no React, no storage): which intents still need the
@@ -22,6 +22,8 @@ export type OrderFields = "gateway" | "exitNum" | "buyer" | "minProceeds" | "rel
 /** One gasless exit. JSON-safe: bigints are decimal strings. */
 export interface GaslessIntent {
   withdrawalTx: Hex;
+  /** The wallet that withdrew (and must sign): one browser can hold several wallets' exits. Missing on older entries. */
+  seller?: Address;
   amount: string;
   exitNum: string;
   order?: Record<OrderFields, string>;
@@ -37,6 +39,13 @@ const POLLED: ReadonlySet<IntentStatus> = new Set(["waiting", "retrying"]);
 /** Intents the relayer should be asked about on the next poll. */
 export function needsRelay(intent: GaslessIntent): boolean {
   return POLLED.has(intent.status) && Boolean(intent.order && intent.signature);
+}
+
+/** The intents `address` may act on: its own, plus older entries that predate the seller field (owner unknown). */
+export function intentsOf(list: readonly GaslessIntent[], address: Address | undefined): GaslessIntent[] {
+  if (!address) return [];
+  const me = address.toLowerCase();
+  return list.filter((i) => !i.seller || i.seller.toLowerCase() === me);
 }
 
 /** Insert or replace by withdrawal tx, newest first. Never mutates `list`. */

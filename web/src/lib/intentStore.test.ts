@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyRelayResponse, failureAdvice, mergeRelayed, needsRelay, upsertIntent, type GaslessIntent } from "./intentStore.ts";
+import { applyRelayResponse, failureAdvice, intentsOf, mergeRelayed, needsRelay, upsertIntent, type GaslessIntent } from "./intentStore.ts";
 
 const TX_A = `0x${"a".repeat(64)}` as const;
 const TX_B = `0x${"b".repeat(64)}` as const;
@@ -83,4 +83,14 @@ test("failureAdvice offers a fresh signature only when the order merely expired"
   assert.match(tooSmall.text, /ExitTooSmall/);
   assert.match(tooSmall.text, /still yours/);
   assert.equal(failureAdvice(undefined).canResign, false);
+});
+
+test("intentsOf shows a wallet only its own fast exits (and older entries whose seller is unknown)", () => {
+  const alice = "0x1111111111111111111111111111111111111111";
+  const bob = "0x2222222222222222222222222222222222222222";
+  const TX_C = `0x${"c".repeat(64)}` as const;
+  const list = [intent({ withdrawalTx: TX_A, seller: alice }), intent({ withdrawalTx: TX_B, seller: bob }), intent({ withdrawalTx: TX_C })];
+  assert.deepEqual(intentsOf(list, alice).map((i) => i.withdrawalTx), [TX_A, TX_C]);
+  assert.deepEqual(intentsOf(list, bob.toUpperCase().replace("0X", "0x") as `0x${string}`).map((i) => i.withdrawalTx), [TX_B, TX_C]);
+  assert.deepEqual(intentsOf(list, undefined), []);
 });

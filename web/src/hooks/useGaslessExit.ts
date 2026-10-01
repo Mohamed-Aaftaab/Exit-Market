@@ -130,6 +130,11 @@ export function useGaslessExit() {
     async (intent: GaslessIntent, onStep: (step: string) => void) => {
       const { router, vault } = DEPLOYMENT;
       if (!router || !vault) throw new Error("Gasless exits not configured");
+      if (!address) throw new Error("Connect a wallet first");
+      // The router only accepts the withdrawing wallet's signature: another wallet's would fail at settlement.
+      if (intent.seller && intent.seller.toLowerCase() !== address.toLowerCase()) {
+        throw new Error(`This fast exit belongs to ${intent.seller}: connect that wallet to sign it`);
+      }
       const amount = BigInt(intent.amount);
       const order: SellOrder = {
         gateway: XAI_TESTNET.tokenBridge.parentErc20Gateway,
@@ -159,7 +164,7 @@ export function useGaslessExit() {
       update((current) => upsertIntent(current, signed));
       void poll();
     },
-    [poll, signTypedDataAsync, switchChainAsync],
+    [address, poll, signTypedDataAsync, switchChainAsync],
   );
 
   const start = useCallback(
@@ -195,6 +200,7 @@ export function useGaslessExit() {
       // Persist before asking for the signature: if it is rejected, the exit is not lost and can be signed later.
       const unsigned: GaslessIntent = {
         withdrawalTx,
+        seller: address,
         amount: amount.toString(),
         exitNum: initiated.args._exitNum.toString(),
         status: "unsigned",

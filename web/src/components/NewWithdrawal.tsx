@@ -7,7 +7,7 @@ import { TestFunds } from "@/components/TestFunds";
 import { useGaslessExit, type GaslessIntent } from "@/hooks/useGaslessExit";
 import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, childRouterAbi, vaultAbi } from "@/lib/contracts";
 import { fastExitMinimum } from "@/lib/exitLimits";
-import { failureAdvice } from "@/lib/intentStore";
+import { failureAdvice, intentsOf } from "@/lib/intentStore";
 import { errorText, parseUsdgInput, usdg } from "@/lib/format";
 import { xaiTestnet } from "@/lib/wagmi";
 
@@ -55,6 +55,8 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
   const { writeContractAsync } = useWriteContract();
   const child = usePublicClient({ chainId: xaiTestnet.id });
   const gasless = useGaslessExit();
+  // One browser may hold several wallets' fast exits; list (and offer to sign) only the connected wallet's.
+  const myIntents = intentsOf(gasless.intents, address);
   const canGasless = Boolean(DEPLOYMENT.router);
   const [isFast, setIsFast] = useState(canGasless);
   const [amount, setAmount] = useState("");
@@ -166,9 +168,9 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
           {status}
         </p>
       )}
-      {gasless.intents.length > 0 && (
+      {myIntents.length > 0 && (
         <ul className="space-y-1 text-xs" aria-label="Gasless exits">
-          {gasless.intents.slice(0, 5).map((i) => (
+          {myIntents.slice(0, 5).map((i) => (
             <li key={i.withdrawalTx} className="space-y-0.5">
               <span className="flex items-center justify-between gap-3 font-mono">
                 <span className="text-ink">
