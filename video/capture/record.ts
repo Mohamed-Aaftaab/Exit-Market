@@ -2,8 +2,9 @@
  * Records real footage of the live app (Arbitrum Sepolia + Xai Testnet) for the demo video. Every transaction
  * in these clips is real; only the wallet popup is replaced by a Node-side test wallet.
  *
- *   node video/capture/record.ts <scene>      scenes: explorer | withdraw | sell | gasless-start | gasless-settled
- * Env: APP_URL (default http://localhost:3100, a production build), DEPLOYER_PRIVATE_KEY / SELLER_PRIVATE_KEY.
+ *   node video/capture/record.ts <scene>      scenes: explorer | withdraw | sell | gasless-start | gasless-settled | list | buy-listing
+ * Env: APP_URL (default http://localhost:3100, a production build), DEPLOYER_PRIVATE_KEY / SELLER_PRIVATE_KEY /
+ * BUYER_PRIVATE_KEY, LIST_PRICE (default 1.99).
  */
 import "dotenv/config";
 import { mkdirSync } from "node:fs";
@@ -120,6 +121,42 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await page.getByRole("link", { name: /settled/ }).first().waitFor({ timeout: 5 * MINUTE });
     await pause(4000);
   },
+  async list(page) {
+    await page.goto(`${APP_URL}/app`);
+    await pause(1500);
+    await connect(page);
+    await scrollBy(page, DESK_SCROLL, 1200);
+    const row = page.getByRole("button", { name: /Sellable now/ }).first();
+    await row.waitFor({ timeout: 2 * MINUTE });
+    await click(page, row);
+    const listMode = page.getByRole("button", { name: "List at your price", exact: true });
+    await listMode.waitFor({ timeout: 2 * MINUTE });
+    await click(page, listMode);
+    const price = page.getByLabel("Your price (USDG)");
+    await price.fill("");
+    await typeInto(page, price, process.env.LIST_PRICE ?? "1.99");
+    await click(page, page.getByRole("button", { name: "1 day", exact: true }));
+    await pause(2500); // let the payout line be read
+    await click(page, page.getByRole("button", { name: /^List for / }));
+    await page.getByRole("status").filter({ hasText: /^Listed at/ }).waitFor({ timeout: 3 * MINUTE });
+    await pause(1500);
+    const listings = page.getByRole("list", { name: "Open listings" });
+    await listings.waitFor({ timeout: 2 * MINUTE });
+    await listings.scrollIntoViewIfNeeded();
+    await pause(4000);
+  },
+  async "buy-listing"(page) {
+    await page.goto(`${APP_URL}/app`);
+    await pause(1500);
+    await connect(page);
+    const buy = page.getByRole("button", { name: /^Buy for .* USDG$/ }).first();
+    await buy.waitFor({ timeout: 2 * MINUTE });
+    await buy.scrollIntoViewIfNeeded();
+    await pause(3000); // let the listing's return and payout time be read
+    await click(page, buy);
+    await page.getByRole("status").filter({ hasText: /^Bought\./ }).waitFor({ timeout: 3 * MINUTE });
+    await pause(4000);
+  },
 };
 
 const WALLET_FOR: Record<string, string | undefined> = {
@@ -128,6 +165,8 @@ const WALLET_FOR: Record<string, string | undefined> = {
   sell: "DEPLOYER_PRIVATE_KEY",
   "gasless-start": "SELLER_PRIVATE_KEY",
   "gasless-settled": "SELLER_PRIVATE_KEY",
+  list: "DEPLOYER_PRIVATE_KEY",
+  "buy-listing": "BUYER_PRIVATE_KEY",
 };
 
 async function main() {
@@ -136,7 +175,7 @@ async function main() {
   if (!name || !scene) throw new Error(`Usage: record.ts <${Object.keys(scenes).join(" | ")}>`);
   mkdirSync(OUT, { recursive: true });
   const keyVar = WALLET_FOR[name];
-  const { context, page } = await open(keyVar === "SELLER_PRIVATE_KEY" ? "seller" : "deployer", keyVar);
+  const { context, page } = await open(keyVar ? keyVar.replace("_PRIVATE_KEY", "").toLowerCase() : "anon", keyVar);
   const recording = await startRecording(page, `${OUT}/${name}.mp4`);
   try {
     await scene(page);

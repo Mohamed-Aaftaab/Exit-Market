@@ -24,6 +24,11 @@ function stepsOf(sale: PreparedSale): Step[] {
       ok: sale.checks.nodeCommitsRoot && sale.checks.nodeUnresolved,
     },
     {
+      label: "No rival on the pending chain",
+      detail: `verifier walks node #${p.nodeNum} back to the latest confirmed node: no level is disputed`,
+      ok: sale.checks.uncontested,
+    },
+    {
       label: "Not yet claimed",
       detail: `Outbox.isSpent(${p.index}) = ${!sale.checks.unspent}`,
       ok: sale.checks.unspent,

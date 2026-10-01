@@ -21,7 +21,11 @@ function pickAddress(name: string, envValue: string | undefined, fileValue: stri
   return fromEnv ?? parseAddress(fileValue);
 }
 
-const FILE: { market?: string; vault?: string; router?: string } = deploymentFile;
+const FILE: { market?: string; vault?: string; router?: string; deployBlock?: number } = deploymentFile;
+
+function parseBlock(value: string | undefined): bigint | undefined {
+  return value && /^\d+$/.test(value) ? BigInt(value) : undefined;
+}
 
 /**
  * Live contracts: deployments/arbitrumSepolia.json (written by the deploy scripts), so a fresh clone runs with no
@@ -32,6 +36,9 @@ export const DEPLOYMENT = {
   market: pickAddress("NEXT_PUBLIC_EXIT_MARKET", process.env.NEXT_PUBLIC_EXIT_MARKET, FILE.market),
   vault: pickAddress("NEXT_PUBLIC_EXIT_VAULT", process.env.NEXT_PUBLIC_EXIT_VAULT, FILE.vault),
   router: pickAddress("NEXT_PUBLIC_EXIT_INTENT_ROUTER", process.env.NEXT_PUBLIC_EXIT_INTENT_ROUTER, FILE.router),
+  /** Parent-chain block the market was deployed at: where its event scans start. */
+  deployBlock:
+    parseBlock(process.env.NEXT_PUBLIC_MARKET_DEPLOY_BLOCK) ?? (FILE.deployBlock !== undefined ? BigInt(FILE.deployBlock) : 0n),
 } as const;
 
 /** ABIs generated from the compiled contracts (scripts/dev/exportAbis.ts). */

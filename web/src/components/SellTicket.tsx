@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import { ListForm } from "@/components/ListForm";
 import { ProofTrace } from "@/components/ProofTrace";
 import { usePreparedSale, useSellExit, type PreparedSale } from "@/hooks/useExitSale";
+import { useListExit } from "@/hooks/useListingActions";
 import type { WithdrawalRow } from "@/hooks/useWithdrawals";
 import { arbitrumSepolia } from "wagmi/chains";
 import { blocksToDuration, bps, errorText, usdg } from "@/lib/format";
@@ -29,12 +32,54 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
   );
 }
 
+type Mode = "sell" | "list";
+const MODES: ReadonlyArray<readonly [Mode, string]> = [
+  ["sell", "Sell now to the vault"],
+  ["list", "List at your price"],
+];
+
+function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1" role="group" aria-label="How to sell">
+      {MODES.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={mode === value}
+          onClick={() => onChange(value)}
+          className={`rounded-full px-3 py-2 text-sm ${mode === value ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
   const prepared = usePreparedSale(row);
   const sell = useSellExit();
+  const list = useListExit();
+  const [mode, setMode] = useState<Mode>("sell");
 
   if (!row) {
     return <p className="p-6 text-sm text-muted">Select a withdrawal to see what it is worth today.</p>;
+  }
+  // Checked before status: the post-listing refresh flips this row to "listed".
+  if (list.isSuccess) {
+    return (
+      <div className="p-5">
+        <a
+          href={`${arbitrumSepolia.blockExplorers.default.url}/tx/${list.data}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          role="status"
+          className="block rounded-full bg-ok-soft px-4 py-3 text-center text-sm font-medium text-ok hover:brightness-125"
+        >
+          Listed at {usdg(list.variables.price)} USDG. It is in Open listings below ↗
+        </a>
+      </div>
+    );
   }
   // Checked before status: the post-sale refresh flips this row to "transferred".
   if (sell.isSuccess) {
@@ -68,6 +113,13 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
       </p>
     );
   }
+  if (row.status === "listed") {
+    return (
+      <p className="p-6 text-sm text-muted">
+        This exit is listed on the market at your price. Cancel it or watch it in Open listings below.
+      </p>
+    );
+  }
   if (row.status !== "sellable") {
     return <p className="p-6 text-sm text-muted">This exit has already been sold or claimed.</p>;
   }
@@ -82,16 +134,40 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
 
   const sale = prepared.data;
   const b = breakdownOf(sale);
-  // The vault pays from idle USDG; what it has spent on earlier exits returns as each clears its window.
-  const hasLiquidity = sale.vaultIdle >= sale.vaultQuote;
 
   return (
     <div className="space-y-5 p-5">
+      <ModeSwitch mode={mode} onChange={setMode} />
       <div>
         <p className="text-xs uppercase tracking-wide text-muted">Locked by the challenge period</p>
         <p className="font-mono text-2xl text-ink">{blocksToDuration(b.waitBlocks)}</p>
       </div>
 
+      {mode === "list" ? (
+        <>
+          <ProofTrace sale={sale} />
+          <ListForm sale={sale} list={list} />
+        </>
+      ) : (
+        <InstantSale sale={sale} breakdown={b} sell={sell} />
+      )}
+    </div>
+  );
+}
+
+function InstantSale({
+  sale,
+  breakdown: b,
+  sell,
+}: {
+  sale: PreparedSale;
+  breakdown: ReturnType<typeof breakdownOf>;
+  sell: ReturnType<typeof useSellExit>;
+}) {
+  // The vault pays from idle USDG; what it has spent on earlier exits returns as each clears its window.
+  const hasLiquidity = sale.vaultIdle >= sale.vaultQuote;
+  return (
+    <>
       <dl className="space-y-1.5 border-y border-line py-4">
         <Line label="Withdrawal" value={`${usdg(b.face)} USDG`} />
         <Line label="Vault discount (fee + time)" value={`− ${usdg(b.vaultDiscount, 4)}`} />
@@ -123,6 +199,6 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
           {errorText(sell.error)}
         </p>
       )}
-    </div>
+    </>
   );
 }

@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
 import { ConnectButton } from "@/components/ConnectButton";
 import { ExitDesk } from "@/components/ExitDesk";
+import { ListingsPanel } from "@/components/ListingsPanel";
 import { Panel } from "@/components/Panel";
 import { PageShell } from "@/components/site/PageShell";
 import { VaultPanel } from "@/components/VaultPanel";
 
 export const metadata: Metadata = {
   title: "Exit Desk · Exit Market",
-  description: "Pick a pending Xai Testnet withdrawal, see its price and on-chain proof, and sell it in one signature.",
+  description: "Pick a pending Xai Testnet withdrawal, see its price and on-chain proof, and sell it in one signature or list it at your price.",
 };
 
 const STEPS = [
   ["Redirect", "You call the Arbitrum gateway's own transferExitAndCall, handing your pending exit to the market."],
   ["Prove", "The market rebuilds your withdrawal leaf and checks it against the Outbox tree of a pending rollup node."],
-  ["Check", "It confirms the node is unresolved and the Outbox slot is unspent, so no one else can claim it."],
+  ["Check", "It confirms the node is unresolved with no rival anywhere on its pending chain, and the Outbox slot is unspent."],
   ["Settle", "The vault pays you in USDG and becomes the exit's owner. The 6.4-day wait becomes the LPs' yield."],
 ] as const;
 
@@ -24,10 +25,11 @@ export default function DeskPage() {
       action={<ConnectButton />}
       eyebrow="Exit desk"
       title="Sell Your Withdrawal"
-      lead="Start a withdrawal from Xai Testnet, or pick one already in flight. As soon as the next rollup node posts, it is provable on-chain and sellable in one signature."
+      lead="Start a withdrawal from Xai Testnet, or pick one already in flight. As soon as the next rollup node posts, it is provable on-chain: sell it to the vault in one signature, or list it for any buyer at your price."
     >
       <div className="space-y-4">
         <ExitDesk />
+        <ListingsPanel />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
           <Panel title="How the market verifies an exit" meta="all on-chain, inside your transaction" delay={0.16}>

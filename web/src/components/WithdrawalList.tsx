@@ -7,6 +7,7 @@ const STATUS: Record<WithdrawalStatus, { label: string; className: string }> = {
   "awaiting-assertion": { label: "Awaiting assertion", className: "bg-warn-soft text-warn" },
   sellable: { label: "Sellable now", className: "bg-ok-soft text-ok" },
   gasless: { label: "Fast exit · settling", className: "bg-warn-soft text-warn" },
+  listed: { label: "Listed", className: "bg-surface-2 text-ink" },
   transferred: { label: "Sold", className: "bg-surface-2 text-muted" },
   claimed: { label: "Claimed", className: "bg-surface-2 text-muted" },
 };

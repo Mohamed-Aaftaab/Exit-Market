@@ -40,9 +40,14 @@ export function bps(value: number | bigint): string {
 
 /** Human duration for a number of L1 blocks (12s each), rounded up to the minute. */
 export function blocksToDuration(blocks: bigint): string {
-  if (blocks <= 0n) return "now";
+  return secondsToDuration(blocks * BigInt(SECONDS_PER_L1_BLOCK));
+}
+
+/** Human duration for a number of seconds, rounded up to the minute. */
+export function secondsToDuration(seconds: bigint): string {
+  if (seconds <= 0n) return "now";
   // Round once, then split: rounding each unit separately printed "1h 60m" and "23h 60m".
-  const totalMinutes = Math.ceil((Number(blocks) * SECONDS_PER_L1_BLOCK) / 60);
+  const totalMinutes = Math.ceil(Number(seconds) / 60);
   const days = Math.floor(totalMinutes / 1_440);
   const hours = Math.floor((totalMinutes % 1_440) / 60);
   const minutes = totalMinutes % 60;

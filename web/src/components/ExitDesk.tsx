@@ -40,7 +40,7 @@ export function ExitDesk() {
         {address && <NewWithdrawal onStarted={() => withdrawals.refetch()} />}
       </Panel>
 
-      <Panel title="Sell instantly" delay={0.08}>
+      <Panel title="Sell" delay={0.08}>
         {/* keyed: mutation state (e.g. "Sold") must not carry over to another withdrawal */}
         <SellTicket key={selected?.txHash ?? "none"} row={selected} />
       </Panel>

@@ -1,14 +1,17 @@
 /**
- * Exit Market keeper: completes the lifecycle of every exit the vault bought.
- *   pending  -> nothing to do yet
- *   rejected -> vault.writeOff (stop carrying at cost; still collectable if it pays out later)
- *   covered by a confirmed root -> Outbox.executeTransaction (tokens land in the vault), then vault.collect
+ * Exit Market keeper: completes the lifecycle of every exit the market verified.
+ *   pending  -> nothing to do yet (if the vault holds it and its node was rejected: vault.writeOff, so it stops
+ *               being carried at cost; it stays collectable if it pays out later)
+ *   covered by a confirmed root -> Outbox.executeTransaction, which pays whoever owns the exit (the vault, a
+ *               listing's buyer, a seller who cancelled), then: vault.collect if the vault holds it, or
+ *               market.settle if it was still listed (the seller gets face value)
  * Permissionless: anyone can run it with any funded key (KEEPER_PRIVATE_KEY, else DEPLOYER_PRIVATE_KEY).
  * Usage: node scripts/keeper.ts [--loop]
  */
 import { BaseError, encodeAbiParameters, formatUnits, getAbiItem, keccak256, type Hash, type Hex } from "viem";
 import { exitMarketAbi, exitVaultAbi } from "./lib/abis.ts";
 import { getClients, loadDeployment, type Deployment } from "./lib/clients.ts";
+import { ListingStatus } from "./lib/listings.ts";
 import { getLogsChunked } from "./lib/logScan.ts";
 import { XAI_TESTNET } from "./lib/networks.ts";
 import { latestConfirmedRoot, outboxAbi, outboxMessage, outboxProof, type ConfirmedRoot } from "./lib/outbox.ts";
@@ -56,11 +59,6 @@ async function waitSuccess(parent: Clients["parent"], hash: Hash, what: string):
   return hash;
 }
 
-async function isHeld(parent: Clients["parent"], vault: Hex, id: Hex, exit: ExitRecord): Promise<boolean> {
-  const [storedHash] = await parent.readContract({ address: vault, abi: exitVaultAbi, functionName: "purchases", args: [id] });
-  return storedHash === recordHash(exit);
-}
-
 async function isSpent(parent: Clients["parent"], index: bigint): Promise<boolean> {
   return parent.readContract({ address: XAI_TESTNET.ethBridge.outbox, abi: outboxAbi, functionName: "isSpent", args: [index] });
 }
@@ -82,32 +80,50 @@ async function executeOutbox({ parent, parentWallet, child }: Clients, exit: Exi
   }
 }
 
-async function settleExit(clients: Clients, d: Deployment, confirmed: ConfirmedRoot, id: Hex, exit: ExitRecord, tag: string) {
-  const { parent, parentWallet, child } = clients;
-  const [storedHash, cost, writtenOff] = await parent.readContract({ address: d.vault, abi: exitVaultAbi, functionName: "purchases", args: [id] });
-  if (storedHash !== recordHash(exit)) return; // not held by the vault (listing, or already collected)
+/** Who holds the exit on our side right now: decides what follows its Outbox execution. */
+async function holderOf({ parent }: Clients, d: Deployment, id: Hex, exit: ExitRecord) {
+  const [[storedHash, cost, writtenOff], listing] = await Promise.all([
+    parent.readContract({ address: d.vault, abi: exitVaultAbi, functionName: "purchases", args: [id] }),
+    parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "getListing", args: [id] }),
+  ]);
+  return {
+    vault: storedHash === recordHash(exit) ? { cost, writtenOff } : undefined,
+    listed: listing.status === ListingStatus.Listed && recordHash(listing.exit) === recordHash(exit),
+  };
+}
 
-  const spent = await isSpent(parent, exit.index);
+async function processExit(clients: Clients, d: Deployment, confirmed: ConfirmedRoot, id: Hex, exit: ExitRecord, tag: string) {
+  const { parent, parentWallet, child } = clients;
+  const [holder, spent] = await Promise.all([holderOf(clients, d, id, exit), isSpent(parent, exit.index)]);
+
   if (!spent && exit.index >= confirmed.sendCount) {
-    if (!writtenOff && (await parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "isExitRejected", args: [exit] }))) {
+    const { vault } = holder;
+    if (vault && !vault.writtenOff && (await parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "isExitRejected", args: [exit] }))) {
       const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "writeOff", args: [exit] });
       console.log(`  ${tag}: node rejected -> writeOff ${await waitSuccess(parent, hash, "writeOff")}`);
     } else {
-      console.log(`  ${tag}: pending (cost ${formatUnits(cost, 6)}), waiting for confirmation`);
+      const where = vault ? `vault, cost ${formatUnits(vault.cost, 6)}` : holder.listed ? "listed" : "owner's";
+      console.log(`  ${tag}: pending (${where}), waiting for confirmation`);
     }
     return;
   }
+  // Executed and nothing of ours holds it: the Outbox already paid its owner.
+  if (spent && !holder.vault && !holder.listed) return;
 
-  // Proof against the latest confirmed root (may differ from the pending root the exit was bought against).
+  // Proof against the latest confirmed root (may differ from the pending root the exit was proven against).
   const { root, proof } = await outboxProof(child, confirmed.sendCount, exit.index);
   if (root !== confirmed.sendRoot) throw new Error("NodeInterface root mismatch");
   if (!spent) await executeOutbox(clients, exit, confirmed, proof, tag);
 
   const payout = { index: exit.index, confirmedRoot: confirmed.sendRoot, proof };
-  const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "collect", args: [exit, payout] });
-  console.log(`  ${tag}: collected ${await waitSuccess(parent, hash, "collect")}`);
+  if (holder.vault) {
+    const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "collect", args: [exit, payout] });
+    console.log(`  ${tag}: collected ${await waitSuccess(parent, hash, "collect")}`);
+  } else if (holder.listed) {
+    const hash = await parentWallet.writeContract({ address: d.market, abi: exitMarketAbi, functionName: "settle", args: [id, payout] });
+    console.log(`  ${tag}: paid out while listed -> settled to the seller ${await waitSuccess(parent, hash, "settle")}`);
+  }
 }
-
 /** One pass over every exit the market verified. A failing exit is logged and skipped, never aborts the pass. */
 export async function runOnce({ clients = getClients(KEEPER_KEYS), deployment = loadDeployment() } = {}): Promise<KeeperRun> {
   const { parent, child } = clients;
@@ -119,16 +135,20 @@ export async function runOnce({ clients = getClients(KEEPER_KEYS), deployment = 
   ]);
   console.log(`${new Date().toISOString()} ${scan.logs.length} verified exits; confirmed node #${confirmed.nodeNum} covers ${confirmed.sendCount} sends`);
 
+  // An exit listed, cancelled and listed again is verified twice: only its latest record matters.
+  const latest = new Map<Hex, ExitRecord>();
+  for (const log of scan.logs) latest.set(log.args.id!, log.args.exit!);
+
   let failed = 0;
-  for (const log of scan.logs) {
-    const [id, exit] = [log.args.id!, log.args.exit!];
+  for (const [id, exit] of latest) {
     const tag = `exit #${exit.exitNum} (${formatUnits(exit.amount, 6)} USDG, index ${exit.index})`;
     try {
-      await settleExit(clients, d, confirmed, id, exit, tag);
+      await processExit(clients, d, confirmed, id, exit, tag);
     } catch (err) {
-      // Another keeper may have collected it between our reads and our transaction.
-      if (!(await isHeld(parent, d.vault, id, exit).catch(() => true))) {
-        console.log(`  ${tag}: settled by someone else meanwhile`);
+      // Another keeper may have finished it between our reads and our transaction.
+      const holder = await holderOf(clients, d, id, exit).catch(() => undefined);
+      if (holder && !holder.vault && !holder.listed && (await isSpent(parent, exit.index).catch(() => false))) {
+        console.log(`  ${tag}: completed by someone else meanwhile`);
         continue;
       }
       failed++;
@@ -141,7 +161,7 @@ export async function runOnce({ clients = getClients(KEEPER_KEYS), deployment = 
     parent.readContract({ address: d.vault, abi: exitVaultAbi, functionName: "idleAssets" }),
   ]);
   console.log(`  vault: totalAssets ${formatUnits(total, 6)} USDG, idle ${formatUnits(idle, 6)} USDG`);
-  return { verified: scan.logs.length, failed };
+  return { verified: latest.size, failed };
 }
 
 if (import.meta.main) {

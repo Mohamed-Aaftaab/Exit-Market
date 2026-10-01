@@ -1,7 +1,7 @@
 // Run: node --test web/src/lib/format.test.ts
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { blocksToDuration, bps, errorText, parseUsdgInput, shortHex, usdg } from "./format.ts";
+import { blocksToDuration, bps, errorText, parseUsdgInput, secondsToDuration, shortHex, usdg } from "./format.ts";
 
 const BLOCKS_PER_MINUTE = 5n; // 12s L1 blocks
 const BLOCKS_PER_HOUR = 60n * BLOCKS_PER_MINUTE;
@@ -28,6 +28,14 @@ test("blocksToDuration: hours and days", () => {
   assert.equal(blocksToDuration(BLOCKS_PER_HOUR + 30n * BLOCKS_PER_MINUTE), "1h 30m");
   assert.equal(blocksToDuration(BLOCKS_PER_DAY + BLOCKS_PER_HOUR + 1n), "1d 1h");
   assert.equal(blocksToDuration(6n * BLOCKS_PER_DAY + 9n * BLOCKS_PER_HOUR + 36n * BLOCKS_PER_MINUTE), "6d 9h");
+});
+
+test("secondsToDuration rounds up to the minute and shares the block formatter's carry rule", () => {
+  assert.equal(secondsToDuration(0n), "now");
+  assert.equal(secondsToDuration(1n), "1m");
+  assert.equal(secondsToDuration(3_599n), "1h 0m");
+  assert.equal(secondsToDuration(86_400n + 3_600n), "1d 1h");
+  assert.equal(blocksToDuration(300n), secondsToDuration(3_600n));
 });
 
 test("parseUsdgInput accepts up to 6 decimals and rejects zero or malformed input", () => {

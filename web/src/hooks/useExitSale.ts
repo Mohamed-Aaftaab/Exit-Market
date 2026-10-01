@@ -5,6 +5,7 @@ import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "w
 import { arbitrumSepolia } from "wagmi/chains";
 import { encodePacked, keccak256, type Hash, type PublicClient } from "viem";
 import { buildExitProof, type Withdrawal } from "@shared/exitProof.ts";
+import { legacyRootVerifierAbi } from "@shared/abis.ts";
 import { encodeSellToBuyer, netOfMarketFee, toExitRecord } from "@shared/hookData.ts";
 import { DEPLOYMENT, XAI_TESTNET, marketAbi, outboxAbi, parentGatewayAbi, rollupAbi, vaultAbi } from "@/lib/contracts";
 import { xaiTestnet } from "@/lib/wagmi";
@@ -18,6 +19,8 @@ export interface PreparedSale {
     ownerIsSeller: boolean;
     nodeCommitsRoot: boolean;
     nodeUnresolved: boolean;
+    /** The market's own verifier accepts the root: for a pending node, no rival anywhere on its pending chain. */
+    uncontested: boolean;
     minimalPath: boolean;
     unspent: boolean;
   };
@@ -42,14 +45,26 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
   });
   const p = withdrawal.proof;
 
-  const [node, firstUnresolved, feeBps, l1Block, spent] = await Promise.all([
+  const [node, firstUnresolved, feeBps, l1Block, spent, gatewayConfig] = await Promise.all([
     parent.readContract({ address: XAI_TESTNET.ethBridge.rollup, abi: rollupAbi, functionName: "getNode", args: [p.nodeNum] }),
     parent.readContract({ address: XAI_TESTNET.ethBridge.rollup, abi: rollupAbi, functionName: "firstUnresolvedNode" }),
     parent.readContract({ address: market, abi: marketAbi, functionName: "feeBps" }),
     // Inside Arbitrum's EVM, block.number is the L1 block; the RPC exposes it as l1BlockNumber.
     parent.getBlock().then((b) => BigInt((b as unknown as { l1BlockNumber: string }).l1BlockNumber)),
     parent.readContract({ address: XAI_TESTNET.ethBridge.outbox, abi: outboxAbi, functionName: "isSpent", args: [p.index] }),
+    parent.readContract({
+      address: market,
+      abi: marketAbi,
+      functionName: "getGatewayConfig",
+      args: [XAI_TESTNET.tokenBridge.parentErc20Gateway],
+    }),
   ]);
+  const [rootValid] = await parent.readContract({
+    address: gatewayConfig.verifier,
+    abi: legacyRootVerifierAbi,
+    functionName: "verifyRoot",
+    args: [gatewayConfig.rollup, gatewayConfig.outbox, p.sendRoot, p.nodeNum, p.blockHash],
+  });
 
   const record = toExitRecord(
     withdrawal,
@@ -69,6 +84,7 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
       ownerIsSeller: row.owner.toLowerCase() === row.initialDestination.toLowerCase(),
       nodeCommitsRoot: node.confirmData === keccak256(encodePacked(["bytes32", "bytes32"], [p.blockHash, p.sendRoot])),
       nodeUnresolved: p.nodeNum >= firstUnresolved,
+      uncontested: rootValid,
       minimalPath: p.index < 2n ** BigInt(p.merkleProof.length),
       unspent: !spent,
     },

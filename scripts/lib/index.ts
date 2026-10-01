@@ -25,6 +25,15 @@ export {
   type RelayResult,
   type SellOrder,
 } from "./relay.ts";
+export {
+  ListingStatus,
+  listingEconomics,
+  listingIdOf,
+  loadOpenListings,
+  type ListingEconomics,
+  type MarketListing,
+  type OpenListing,
+} from "./listings.ts";
 export { ARBITRUM_SEPOLIA, XAI_TESTNET, xaiTestnet } from "./networks.ts";
 export { getLogsChunked, planChunks } from "./logScan.ts";
 export {

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { BaseError, ContractFunctionRevertedError, encodeErrorResult, zeroAddress, type Hex } from "viem";
 import { exitIntentRouterAbi } from "./abis.ts";
 import { claimOf, netOfMarketFee } from "./hookData.ts";
+import { listingEconomics, listingIdOf } from "./listings.ts";
 import { SELL_ORDER_TYPES, revertReason } from "./relay.ts";
 import type { Withdrawal } from "./exitProof.ts";
 
@@ -61,4 +62,33 @@ test("claimOf copies every field the market's ExitClaim needs", () => {
   ]);
   assert.equal(c.index, 84n);
   assert.deepEqual(c.proof, [hash]);
+});
+
+test("listingIdOf matches ExitKeys.id: keccak256(abi.encode(gateway, exitNum, initialDestination))", () => {
+  const gateway = "0xCcB451C4Df22addCFe1447c58bC6b2f264Bb1256";
+  const dest = "0x4BDc704660B3710849e8C324469f863F8fC5cFAD";
+  // Value returned by ExitMarket.listingId(gateway, 1, dest) on the deployed v4 market (Arbitrum Sepolia).
+  assert.equal(listingIdOf(gateway, 1n, dest), "0xa3a7eda8a60c2f330f4a71bd282caa2202e730d9b213caba1ca3af193996da59");
+  assert.notEqual(listingIdOf(gateway, 2n, dest), listingIdOf(gateway, 1n, dest));
+});
+
+test("listingEconomics: seller net after the snapshotted fee, buyer discount and annualised return", () => {
+  const listing = { price: 1_990_000n, feeBps: 25, exit: { amount: 2_000_000n, deadlineBlock: 1_300n } };
+  const e = listingEconomics(listing, 1_000n); // 300 L1 blocks = 3,600 s to payout
+  assert.equal(e.sellerNet, 1_990_000n - 4_975n);
+  assert.equal(e.discount, 10_000n);
+  assert.equal(e.secondsToPayout, 3_600n);
+  // 10,000 / 1,990,000 over one hour, annualised: 0.5025% * 8,760 = 4,402%.
+  assert.equal(e.aprBps, (10_000n * 10_000n * 31_536_000n) / (1_990_000n * 3_600n));
+});
+
+test("listingEconomics: no annualised return without a discount or once the exit can pay out", () => {
+  const atFace = { price: 2_000_000n, feeBps: 25, exit: { amount: 2_000_000n, deadlineBlock: 1_300n } };
+  assert.equal(listingEconomics(atFace, 1_000n).aprBps, undefined);
+  const due = { price: 1_990_000n, feeBps: 25, exit: { amount: 2_000_000n, deadlineBlock: 900n } };
+  const e = listingEconomics(due, 1_000n);
+  assert.equal(e.secondsToPayout, 0n);
+  assert.equal(e.aprBps, undefined);
+  const premium = { price: 2_100_000n, feeBps: 0, exit: { amount: 2_000_000n, deadlineBlock: 1_300n } };
+  assert.equal(listingEconomics(premium, 1_000n).discount, -100_000n);
 });

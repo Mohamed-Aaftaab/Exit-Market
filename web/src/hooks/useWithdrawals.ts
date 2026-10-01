@@ -22,6 +22,7 @@ export type WithdrawalStatus =
   | "awaiting-assertion" // not yet committed by any rollup node: can't be proven yet
   | "sellable" // committed by a node, unspent, still owned by the user
   | "gasless" // withdrawn to the intent router: the relayer sells it, no action needed
+  | "listed" // held by the market as an open listing at the seller's price
   | "transferred" // exit redirected (sold) to someone else
   | "claimed"; // executed through the Outbox
 
@@ -44,6 +45,8 @@ export interface WithdrawalsData {
 function statusOf(user: Address, owner: Address, spent: boolean, asserted: boolean): WithdrawalStatus {
   if (spent) return "claimed";
   if (DEPLOYMENT.router && owner.toLowerCase() === DEPLOYMENT.router.toLowerCase()) return "gasless";
+  // The market holds an exit only while it is listed (a sale or a cancel moves it on).
+  if (DEPLOYMENT.market && owner.toLowerCase() === DEPLOYMENT.market.toLowerCase()) return "listed";
   if (owner.toLowerCase() !== user.toLowerCase()) return "transferred";
   return asserted ? "sellable" : "awaiting-assertion";
 }

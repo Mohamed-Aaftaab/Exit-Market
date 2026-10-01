@@ -78,8 +78,7 @@ contract XaiForkTest is Test {
 
         // A dispute: when a validator creates a rival child, RollupCore sets the parent's latestChildNumber to it.
         // Only that field of the live parent node is changed.
-        uint64 rival = r.latestNodeCreated();
-        assertGt(rival, c.nodeNum);
+        uint64 rival = r.latestNodeCreated() + 1; // the next node a disputing validator would create
         uint64 parentNum = r.getNode(c.nodeNum).prevNum;
         LegacyNode memory parent = r.getNode(parentNum);
         parent.latestChildNumber = rival;

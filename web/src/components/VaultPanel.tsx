@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { zeroAddress, type Address, type Hash } from "viem";
-import { useAccount, usePublicClient, useReadContracts, useSwitchChain, useWriteContract } from "wagmi";
+import { zeroAddress, type Address } from "viem";
+import { useAccount, useReadContracts, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
+import { useParentTx } from "@/hooks/useParentTx";
 import { ARBITRUM_SEPOLIA, DEPLOYMENT, erc20Abi, vaultAbi } from "@/lib/contracts";
 import { bps, errorText, parseUsdgInput, usdg } from "@/lib/format";
 
@@ -53,20 +54,6 @@ function useVaultStats(vault: Address | undefined, user: Address | undefined) {
     withdrawable: user ? withdrawable : undefined,
     unlockTime: user && unlockTime ? Number(unlockTime) : undefined,
     walletUsdg: user ? walletUsdg : undefined,
-  };
-}
-
-/** Sends a vault transaction on Arbitrum Sepolia and waits for it; throws if it reverted. */
-function useVaultTx() {
-  const { chainId } = useAccount();
-  const { switchChainAsync } = useSwitchChain();
-  const parent = usePublicClient({ chainId: arbitrumSepolia.id });
-  return async (send: () => Promise<Hash>): Promise<void> => {
-    if (!parent) throw new Error("Arbitrum Sepolia client unavailable");
-    if (chainId !== arbitrumSepolia.id) await switchChainAsync({ chainId: arbitrumSepolia.id });
-    const hash = await send();
-    const receipt = await parent.waitForTransactionReceipt({ hash, timeout: 120_000 });
-    if (receipt.status !== "success") throw new Error(`Transaction reverted: ${hash}`);
   };
 }
 
@@ -135,7 +122,7 @@ export function VaultPanel() {
   const { address } = useAccount();
   const vault = DEPLOYMENT.vault;
   const stats = useVaultStats(vault, address);
-  const sendTx = useVaultTx();
+  const sendTx = useParentTx();
   const { writeContractAsync } = useWriteContract();
 
   if (!vault) return <p className="p-5 text-sm text-muted">Vault not deployed yet.</p>;
