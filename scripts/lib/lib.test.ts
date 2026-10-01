@@ -6,7 +6,7 @@ import { exitIntentRouterAbi } from "./abis.ts";
 import { claimOf, exitItemHash, netOfMarketFee } from "./hookData.ts";
 import { keeperStep, type ExitFacts } from "./keeperPlan.ts";
 import { listingEconomics, listingIdOf } from "./listings.ts";
-import { assertionHashOf } from "./boldProof.ts";
+import { AssertionStatus, assertionHashOf, pickCovering, type BoldAssertion, type CoveringCandidate } from "./boldProof.ts";
 import { outboxRootOf } from "./outbox.ts";
 import { SELL_ORDER_TYPES, revertReason, transientSettlementWait } from "./relay.ts";
 import type { Withdrawal } from "./exitProof.ts";
@@ -187,4 +187,38 @@ test("keeperStep: waits on pending exits and stops on exits no keeper can finish
   assert.equal(keeperStep({ ...FACTS, itemConfirmed: false, vault: { writtenOff: false } }).kind, "wait"); // not rejected yet
   assert.deepEqual(keeperStep({ ...FACTS, itemConfirmed: false, vault: { writtenOff: true }, rejected: true }), { kind: "done" });
   assert.deepEqual(keeperStep({ ...FACTS, itemConfirmed: false, listed: true }), { kind: "done" });
+});
+
+/** Minimal BOLD assertions for the covering policy: only identity matters to pickCovering. */
+const assertionNamed = (n: number): BoldAssertion => ({
+  assertionHash: `0x${n.toString(16).padStart(64, "0")}`,
+  parent: `0x${(n - 1).toString(16).padStart(64, "0")}`,
+  afterState: { globalState: { bytes32Vals: [`0x${"0".repeat(64)}`, `0x${"0".repeat(64)}`], u64Vals: [0n, 0n] }, machineStatus: 1, endHistoryRoot: `0x${"0".repeat(64)}` },
+  inboxAcc: `0x${"0".repeat(64)}`,
+});
+const candidate = (n: number, status: number): CoveringCandidate => ({ assertion: assertionNamed(n), sendCount: BigInt(100 + n), status });
+
+test("pickCovering: a confirmed covering assertion wins over pending ones, like confirmed nodes on legacy rollups", async () => {
+  // Newest first: two pending assertions, then a confirmed one that already covers the withdrawal.
+  const candidates = [candidate(9, AssertionStatus.Pending), candidate(8, AssertionStatus.Pending), candidate(7, AssertionStatus.Confirmed)];
+  const asked: number[] = [];
+  const best = await pickCovering(candidates, async (a) => {
+    asked.push(Number(BigInt(a.assertionHash)));
+    return [a];
+  });
+  assert.equal(best?.pending, false);
+  assert.equal(best?.assertion.assertionHash, assertionNamed(7).assertionHash);
+  assert.deepEqual(best?.chain, []);
+  assert.deepEqual(asked, []); // nothing to register, so no pending chain is even walked
+});
+
+test("pickCovering: otherwise the earliest pending assertion the verifier accepts, skipping contested ones", async () => {
+  const candidates = [candidate(9, AssertionStatus.Pending), candidate(8, AssertionStatus.Pending), candidate(7, AssertionStatus.Pending)];
+  const contested = new Set([assertionNamed(7).assertionHash]);
+  const best = await pickCovering(candidates, async (a) => (contested.has(a.assertionHash) ? undefined : [a]));
+  assert.equal(best?.pending, true);
+  assert.equal(best?.assertion.assertionHash, assertionNamed(8).assertionHash); // 7 is earlier but contested
+  assert.deepEqual(best?.chain, [assertionNamed(8)]);
+  assert.equal(await pickCovering(candidates, async () => undefined), undefined);
+  assert.equal(await pickCovering([], async (a) => [a]), undefined);
 });

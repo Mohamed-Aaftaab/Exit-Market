@@ -7,9 +7,11 @@ plain TypeScript on [viem](https://viem.sh); entry point [`index.ts`](index.ts).
 | Module | What it gives you |
 |---|---|
 | `exitProof.ts` | Legacy (pre-BOLD) rollups. `buildExitProof`: from a child-chain withdrawal tx hash to the full claim (Outbox leaf fields, Merkle proof from `NodeInterface.constructOutboxProof`, and the covering node: a **confirmed** one if it exists, else the **earliest still-pending** one). `decodeWithdrawal` reads any gateway withdrawal. Typed errors: `NotYetAssertedError` (retry after the next node), `InvalidWithdrawalError` (not a gateway withdrawal) |
-| `boldProof.ts` | BOLD rollups (Arbitrum One/Nova, Arbitrum Sepolia, new Orbit chains). `buildBoldExitProof`: the claim against the earliest pending assertion `BoldRootVerifier` accepts (uncontested back to the latest confirmed one), plus the chain of assertions to register first (`unregistered` filters the ones the verifier already knows); `assertionHashOf` mirrors the verifier's hash |
+| `boldProof.ts` | BOLD rollups (Arbitrum One/Nova, Arbitrum Sepolia, new Orbit chains). `buildBoldExitProof`: the claim against a **confirmed** assertion if one covers the withdrawal, else the earliest pending one `BoldRootVerifier` accepts (uncontested back to the latest confirmed one), plus the chain of assertions to register first (`unregistered` filters the ones the verifier already knows). `pickCovering` is that rule on its own (tested); `assertionHashOf` mirrors the verifier's hash |
 | `listings.ts` | `loadOpenListings` (live open listings with liveness), `listingIdOf` (mirrors `ExitKeys.id`), `listingEconomics` (seller net, buyer discount and annualised return) |
-| `outbox.ts` | `latestConfirmedRoot` (from the Outbox's `SendRootUpdated`, so the same for legacy and BOLD), `outboxMessage` and `outboxProof` for `Outbox.executeTransaction` |
+| `marketReads.ts` | `exitRecordFor`: the `ExitRecord` the market will build for a claim (pending or confirmed, deadline), from the verifier the market froze for that gateway; `rootVerdict` is the verdict alone |
+| `outbox.ts` | `latestConfirmedRoot` (from the Outbox's `SendRootUpdated`, so the same for legacy and BOLD), `outboxMessage` and `outboxProof` for `Outbox.executeTransaction`, `outboxRootOf` to check that a confirmed root holds a given exit at its index |
+| `keeperPlan.ts` | `keeperStep`: the keeper's decision table for one exit (execute and collect, settle, write off, wait), pure and tested |
 | `hookData.ts` | `encodeSellToBuyer` / `encodeList`: the `data` for `gateway.transferExitAndCall`; `netOfMarketFee` for the seller's floor; `toExitRecord` for `ExitVault.quote` |
 | `relay.ts` | EIP-712 `SellOrder` types and `routerDomain` for gasless orders; `trySettle` (idempotent: reports `waiting`, `settled` or `done-elsewhere`); `revertReason` decodes custom errors |
 | `abis.ts` | ABIs generated from the compiled contracts (`npm run abis`); CI fails if they drift |
@@ -19,27 +21,36 @@ plain TypeScript on [viem](https://viem.sh); entry point [`index.ts`](index.ts).
 ## Sell a pending withdrawal (one transaction)
 
 ```ts
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, http, parseAbi } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { buildExitProof, encodeSellToBuyer, netOfMarketFee, toExitRecord, exitVaultAbi, exitMarketAbi,
+import { buildExitProof, encodeSellToBuyer, exitMarketAbi, exitRecordFor, exitVaultAbi, netOfMarketFee,
   XAI_TESTNET, xaiTestnet } from "./index.ts";
 
+// market and vault from deployments/arbitrumSepolia.json; withdrawalTx is the seller's withdrawal on Xai Testnet;
+// wallet is the seller's viem WalletClient on Arbitrum Sepolia.
 const parent = createPublicClient({ chain: arbitrumSepolia, transport: http() });
 const child = createPublicClient({ chain: xaiTestnet, transport: http() });
+const gateways = { parent: XAI_TESTNET.tokenBridge.parentErc20Gateway, child: XAI_TESTNET.tokenBridge.childErc20Gateway };
 
-// 1. Prove the withdrawal against the rollup's pending commitments (throws NotYetAssertedError until a node posts).
+// 1. Prove the withdrawal: against a confirmed root if one covers it, else the earliest pending node
+//    (throws NotYetAssertedError until a node posts).
 const w = await buildExitProof({ parent, child, rollup: XAI_TESTNET.ethBridge.rollup,
-  childGateway: XAI_TESTNET.tokenBridge.childErc20Gateway, withdrawalTx });
+  childGateway: gateways.child, withdrawalTx });
 
-// 2. Price it and set the seller's floor, net of the market fee.
-const record = toExitRecord(w, { parent: XAI_TESTNET.tokenBridge.parentErc20Gateway,
-  child: XAI_TESTNET.tokenBridge.childErc20Gateway }, deadlineBlock, true);
-const quote = await parent.readContract({ address: vault, abi: exitVaultAbi, functionName: "quote", args: [record] });
-const feeBps = await parent.readContract({ address: market, abi: exitMarketAbi, functionName: "feeBps" });
+// 2. The record the market will build (its own verifier decides pending or confirmed, and the deadline), the
+//    vault's price for it, and the seller's floor net of the market fee.
+const { record, verdict } = await exitRecordFor(parent, market, gateways, w);
+if (!verdict.valid) throw new Error("Its rollup node is disputed: it sells once a covering root confirms");
+const [quote, feeBps] = await Promise.all([
+  parent.readContract({ address: vault, abi: exitVaultAbi, functionName: "quote", args: [record] }),
+  parent.readContract({ address: market, abi: exitMarketAbi, functionName: "feeBps" }),
+]);
 
 // 3. One signature: redirect the exit to the market, which proves it and sells it to the vault atomically.
-await wallet.writeContract({ address: XAI_TESTNET.tokenBridge.parentErc20Gateway, abi: gatewayAbi,
-  functionName: "transferExitAndCall",
+const gatewayAbi = parseAbi([
+  "function transferExitAndCall(uint256 exitNum, address initialDestination, address newDestination, bytes newData, bytes data)",
+]);
+await wallet.writeContract({ address: gateways.parent, abi: gatewayAbi, functionName: "transferExitAndCall",
   args: [w.exitNum, w.initialDestination, market, "0x", encodeSellToBuyer(w, vault, netOfMarketFee(quote, feeBps))] });
 ```
 
@@ -64,6 +75,7 @@ import { buildBoldExitProof, loadAssertions, unregistered, boldRootVerifierAbi }
 
 const assertions = await loadAssertions(parent, rollup, fromBlock, toBlock); // back past the latest confirmed one
 const { withdrawal, covering } = await buildBoldExitProof({ parent, child, rollup, childGateway, withdrawalTx, assertions });
+// covering.chain is empty when a confirmed assertion covers the withdrawal: nothing to register then.
 for (const a of await unregistered(parent, boldVerifier, rollup, covering.chain)) {
   await wallet.writeContract({ address: boldVerifier, abi: boldRootVerifierAbi, functionName: "register",
     args: [rollup, a.parent, a.afterState, a.inboxAcc] });

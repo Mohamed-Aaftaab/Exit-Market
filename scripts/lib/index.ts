@@ -30,15 +30,18 @@ export {
 } from "./relay.ts";
 export {
   ASSERTION_CREATED,
+  AssertionStatus,
   assertionHashOf,
   buildBoldExitProof,
   findCoveringAssertion,
   loadAssertions,
+  pickCovering,
   toBoldAssertion,
   unregistered,
   type BoldAssertion,
   type BoldAssertionState,
   type CoveringAssertion,
+  type CoveringCandidate,
 } from "./boldProof.ts";
 export { exitRecordFor, rootVerdict, type RootVerdict } from "./marketReads.ts";
 export { latestConfirmedRoot, outboxMessage, outboxProof, outboxRootOf, type ConfirmedRoot } from "./outbox.ts";

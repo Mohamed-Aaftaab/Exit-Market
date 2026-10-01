@@ -27,8 +27,8 @@ const BOLD_ROLLUP_ABI = parseAbi([
   "struct AssertionNode { uint64 firstChildBlock; uint64 secondChildBlock; uint64 createdAtBlock; bool isFirstChild; uint8 status; bytes32 configHash; }",
   "function getAssertion(bytes32 assertionHash) view returns (AssertionNode)",
 ]);
-const STATUS_PENDING = 1;
-const STATUS_CONFIRMED = 2;
+/** RollupCore AssertionStatus values the verifier and this library act on. */
+export const AssertionStatus = { Pending: 1, Confirmed: 2 } as const;
 /** Same bound as BoldRootVerifier.MAX_PENDING_DEPTH. */
 const MAX_PENDING_DEPTH = 512;
 const ASSERTION_STATE_PARAMS = [
@@ -107,10 +107,6 @@ async function sendCountOf(child: PublicClient, assertion: BoldAssertion): Promi
   return BigInt(block.sendCount);
 }
 
-/**
- * The pending chain BoldRootVerifier would walk for `assertion`, oldest first, or undefined if it would refuse it:
- * an ancestor missing from `known`, a rival child at any level, or a non-pending link.
- */
 type AssertionReader = (hash: Hex) => Promise<{ secondChildBlock: bigint; status: number }>;
 
 /** getAssertion with a per-call cache: candidate chains overlap, so each assertion is read once. */
@@ -126,24 +122,55 @@ function cachedReader(parent: PublicClient, rollup: Address): AssertionReader {
   };
 }
 
+/**
+ * The pending chain BoldRootVerifier would walk for `assertion`, oldest first, or undefined if it would refuse it:
+ * an ancestor missing from `known`, a rival child at any level, or a non-pending link.
+ */
 async function uncontestedChain(read: AssertionReader, assertion: BoldAssertion, known: Map<Hex, BoldAssertion>) {
   const chain: BoldAssertion[] = [];
   for (let cursor: BoldAssertion | undefined = assertion, depth = 0; cursor && depth < MAX_PENDING_DEPTH; depth++) {
     chain.unshift(cursor);
     const p = await read(cursor.parent);
     if (p.secondChildBlock !== 0n) return undefined; // disputed at this level
-    if (p.status === STATUS_CONFIRMED) return chain;
-    if (p.status !== STATUS_PENDING) return undefined;
+    if (p.status === AssertionStatus.Confirmed) return chain;
+    if (p.status !== AssertionStatus.Pending) return undefined;
     cursor = known.get(cursor.parent);
   }
   return undefined; // an ancestor outside `known`, or deeper than the verifier walks
 }
 
+/** An assertion that covers the withdrawal, with its rollup status. */
+export interface CoveringCandidate {
+  assertion: BoldAssertion;
+  sendCount: bigint;
+  status: number;
+}
+
 /**
- * The assertion to prove a withdrawal at `position` against: the EARLIEST pending assertion that covers it and that
- * BoldRootVerifier would accept (an earlier deadline means a better price), else a covering confirmed assertion.
+ * Which covering assertion to prove against, the same rule as legacy rollups (exitProof.findCoveringNode): a CONFIRMED
+ * one wins (its root is in the Outbox, so no wait, no rollup risk, no time discount and nothing to register);
+ * otherwise the EARLIEST pending one BoldRootVerifier accepts (an earlier deadline means a better price).
+ * @param candidates covering assertions, newest first
+ * @param chainOf the pending chain the verifier would walk for an assertion, undefined if it would refuse it
+ */
+export async function pickCovering(
+  candidates: readonly CoveringCandidate[],
+  chainOf: (assertion: BoldAssertion) => Promise<BoldAssertion[] | undefined>,
+): Promise<CoveringAssertion | undefined> {
+  const confirmed = candidates.find((c) => c.status === AssertionStatus.Confirmed);
+  if (confirmed) return { assertion: confirmed.assertion, sendCount: confirmed.sendCount, pending: false, chain: [] };
+  for (const c of [...candidates].reverse()) {
+    if (c.status !== AssertionStatus.Pending) continue;
+    const chain = await chainOf(c.assertion);
+    if (chain) return { assertion: c.assertion, sendCount: c.sendCount, pending: true, chain };
+  }
+  return undefined;
+}
+
+/**
+ * The assertion to prove a withdrawal at `position` against (see pickCovering).
  * @param assertions AssertionCreated history (oldest first) reaching back past the latest confirmed assertion
- * @throws NotYetAssertedError when no assertion covers the withdrawal yet
+ * @throws NotYetAssertedError when no assertion covers the withdrawal yet, or only ones the verifier would refuse
  */
 export async function findCoveringAssertion(
   parent: PublicClient,
@@ -154,21 +181,17 @@ export async function findCoveringAssertion(
 ): Promise<CoveringAssertion> {
   const known = new Map(assertions.map((a) => [a.assertionHash, a]));
   const read = cachedReader(parent, rollup);
-  let best: CoveringAssertion | undefined;
+  const candidates: CoveringCandidate[] = [];
   let newestSendCount: bigint | undefined;
   for (const assertion of [...assertions].reverse()) {
     const sendCount = await sendCountOf(child, assertion);
     newestSendCount ??= sendCount;
     if (sendCount <= position) break;
-    const node = await read(assertion.assertionHash);
-    if (node.status === STATUS_CONFIRMED) {
-      best ??= { assertion, sendCount, pending: false, chain: [] };
-      break; // everything older is confirmed too
-    }
-    if (node.status !== STATUS_PENDING) continue;
-    const chain = await uncontestedChain(read, assertion, known);
-    if (chain) best = { assertion, sendCount, pending: true, chain };
+    const { status } = await read(assertion.assertionHash);
+    candidates.push({ assertion, sendCount, status });
+    if (status === AssertionStatus.Confirmed) break; // everything older is confirmed too
   }
+  const best = await pickCovering(candidates, (a) => uncontestedChain(read, a, known));
   if (!best) throw new NotYetAssertedError(position, newestSendCount ?? 0n);
   return best;
 }
