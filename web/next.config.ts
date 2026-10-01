@@ -1,9 +1,12 @@
 import path from "node:path";
 import type { NextConfig } from "next";
-import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "../scripts/lib/networks.ts";
 
 const isDev = process.env.NODE_ENV === "development";
-const origin = (url: string) => new URL(url).origin;
+/**
+ * Origins of ARBITRUM_SEPOLIA.rpcUrl and XAI_TESTNET.rpcUrl (scripts/lib/networks.ts). Inlined because `next typegen`
+ * cannot load TypeScript imported from outside web/; web/src/lib/securityHeaders.test.ts fails if they drift.
+ */
+const RPC_ORIGINS = ["https://sepolia-rollup.arbitrum.io", "https://testnet-v2.xai-chain.net"] as const;
 
 /**
  * Every origin the site talks to: the two chains' public RPCs (reads, wallet-independent), the display font and
@@ -17,7 +20,7 @@ const contentSecurityPolicy = [
   "img-src 'self' blob: data:",
   "font-src 'self' data: https://db.onlinewebfonts.com",
   "media-src 'self' https://d8j0ntlcm91z4.cloudfront.net",
-  `connect-src 'self' ${origin(ARBITRUM_SEPOLIA.rpcUrl)} ${origin(XAI_TESTNET.rpcUrl)}${isDev ? " ws:" : ""}`,
+  `connect-src 'self' ${RPC_ORIGINS.join(" ")}${isDev ? " ws:" : ""}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
