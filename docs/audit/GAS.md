@@ -41,8 +41,8 @@ cost and calldata gas are not included. Each row asserts a ceiling about 30% abo
 | **ExitIntentRouter** `settle` (EIP-712 check + market hook + vault purchase + seller and relayer payouts) | 520,590 | 680,000 |
 | ExitIntentRouter `reclaim` | 155,502 | 205,000 |
 
-Measured 2026-10-01 on the v4 contracts. Against v3, every operation that verifies a pending root costs about
-35k more: the v4 legacy verifier also reads the node's parent (and, in the mock, a same-block neighbour) to rule
+Measured 2026-10-01 on the v4 contracts. Against v3, every operation that verifies a pending root costs
+35-43k more: the v4 legacy verifier also reads the node's parent (and, in the mock, a same-block neighbour) to rule
 out a rival, and `buyExit` returns a consent value. Ceilings were re-set to about 30% above these figures.
 Readings:
 

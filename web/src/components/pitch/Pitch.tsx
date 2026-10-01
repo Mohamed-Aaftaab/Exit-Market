@@ -228,7 +228,7 @@ function Evidence() {
         </div>
         <p className={styles.text}>
           Round four found a critical balance-delta bug in the first router; round five found the same pattern in the market and an owner key
-          that could allow a hostile gateway. Each was reproduced as an exploit test, fixed and redeployed; the live market now has no owner.
+          that could allow a hostile gateway; round six found the legacy verifier still trusted a node after a validator disputed it, and a buyer contract could be pulled into a sale it never agreed to. Each was reproduced as an exploit test, fixed and redeployed; the live market now has no owner.
           AI-assisted internal reviews, not a third-party audit.
         </p>
       </Slide>

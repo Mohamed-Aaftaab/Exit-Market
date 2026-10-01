@@ -22,7 +22,7 @@ Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain 
    withdrawal, its sale while pending, a listing bought by another wallet, and the keeper settling each one.
 3. **Use the [desk](https://exit-market-gamma.vercel.app/app)** with a browser wallet (MetaMask, Rabby). An empty
    wallet is fine: **Get test funds** sends 1.5 USDG and sXAI gas on Xai Testnet (once per address). Then start
-   a **Fast exit**: it needs no ETH on Arbitrum Sepolia, the site's relayer settles it as soon as Xai's next node
+   a **Fast exit** of at least 1 USDG (the vault's minimum): it needs no ETH on Arbitrum Sepolia, the site's relayer settles it as soon as Xai's next node
    posts (~15 minutes). Selling to the vault yourself, listing at your price or buying a listing are one
    transaction each on Arbitrum Sepolia and need a little ETH there
    ([Alchemy faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)). The scripts in
@@ -192,13 +192,17 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 ```bash
 npm install
 npx hardhat test solidity                      # 440 tests
-FORK_TESTS=1 npx hardhat test solidity         # + 10 fork tests against Xai Testnet and Arbitrum One mainnet
+npm run test:fork                              # + 10 fork tests against Xai Testnet and Arbitrum One mainnet (*)
 npm run test:lib && npm run test:web           # library and web unit tests
 npm run typecheck                              # both TypeScript projects
 npm run web:dev                                # http://localhost:3000, no configuration needed
 node scripts/keeper.ts --loop                  # permissionless keeper
 node scripts/selfServe.ts settle <intent.json>  # be your own relayer (or: reclaim <withdrawalTx>)
 ```
+
+(*) Public RPCs keep only recent Arbitrum Sepolia state, so the four Xai fork tests skip, with a message, once their
+pinned block ages out of that window. `node scripts/dev/makeForkFixture.ts <withdrawal tx>` re-pins them to a live pending
+node, or set `ARB_SEPOLIA_RPC_URL` to an archive node.
 
 ## Deployments (Arbitrum Sepolia, v4)
 
