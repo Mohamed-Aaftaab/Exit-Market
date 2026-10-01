@@ -56,8 +56,9 @@ async function drip(key: Hex, fromBlock: bigint, to: Address) {
 
 /** POST { address } -> { status: "funded", usdgTx, gasTx? } on Xai Testnet. */
 export async function POST(request: Request) {
-  const key = process.env.FAUCET_PRIVATE_KEY;
-  const fromBlock = parseBlock(process.env.FAUCET_FROM_BLOCK);
+  // Trimmed: a value pasted into a dashboard or piped into a CLI often carries a trailing newline.
+  const key = process.env.FAUCET_PRIVATE_KEY?.trim();
+  const fromBlock = parseBlock(process.env.FAUCET_FROM_BLOCK?.trim());
   if (!key || fromBlock === undefined) return bad("Test faucet not configured", 503);
   if (!limiter.allow(clientKeyOf(request))) return bad("Too many requests from this address, try again later", 429);
 

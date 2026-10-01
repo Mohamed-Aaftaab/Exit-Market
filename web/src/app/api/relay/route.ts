@@ -50,7 +50,7 @@ async function settle(key: Hex, router: string, req: RelayRequest) {
 
 /** POST { withdrawalTx, order, signature } -> { status: "waiting" | "settled", ... } */
 export async function POST(request: Request) {
-  const key = process.env.RELAYER_PRIVATE_KEY;
+  const key = process.env.RELAYER_PRIVATE_KEY?.trim();
   const router = DEPLOYMENT.router;
   if (!key || !router || !DEPLOYMENT.vault) return bad("Relayer not configured", 503);
   if (!allowRequest(clientKeyOf(request))) return bad("Too many requests", 429);
