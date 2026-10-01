@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyRelayResponse, mergeRelayed, needsRelay, upsertIntent, type GaslessIntent } from "./intentStore.ts";
+import { applyRelayResponse, failureAdvice, mergeRelayed, needsRelay, upsertIntent, type GaslessIntent } from "./intentStore.ts";
 
 const TX_A = `0x${"a".repeat(64)}` as const;
 const TX_B = `0x${"b".repeat(64)}` as const;
@@ -71,4 +71,14 @@ test("relayer responses map to the right status", () => {
 
   const unreachable = applyRelayResponse(intent(), undefined, 2);
   assert.deepEqual([unreachable.status, unreachable.updatedAt], ["retrying", 2]);
+});
+
+test("failureAdvice offers a fresh signature only when the order merely expired", () => {
+  const expired = failureAdvice("OrderExpired(1700000000)");
+  assert.equal(expired.canResign, true);
+  const tooSmall = failureAdvice("ExitTooSmall(500000, 1000000)");
+  assert.equal(tooSmall.canResign, false);
+  assert.match(tooSmall.text, /ExitTooSmall/);
+  assert.match(tooSmall.text, /still yours/);
+  assert.equal(failureAdvice(undefined).canResign, false);
 });

@@ -6,7 +6,7 @@ import { exitIntentRouterAbi } from "./abis.ts";
 import { claimOf, netOfMarketFee } from "./hookData.ts";
 import { listingEconomics, listingIdOf } from "./listings.ts";
 import { assertionHashOf } from "./boldProof.ts";
-import { SELL_ORDER_TYPES, revertReason } from "./relay.ts";
+import { SELL_ORDER_TYPES, revertReason, transientSettlementWait } from "./relay.ts";
 import type { Withdrawal } from "./exitProof.ts";
 
 test("netOfMarketFee rounds the fee down exactly like ExitMarket (price - price * feeBps / 10_000)", () => {
@@ -114,4 +114,12 @@ test("assertionHashOf reproduces a real Arbitrum One BOLD assertion hash from it
     endHistoryRoot: endHistoryRoot as Hex,
   };
   assert.equal(assertionHashOf(parent as Hex, afterState, inboxAcc as Hex), assertionHash);
+});
+test("transientSettlementWait keeps orders waiting through reverts that clear up by themselves, and only those", () => {
+  for (const reason of ["InsufficientLiquidity(1, 0)", "TooManyOpenPositions(32)", "InvalidRoot(0xab, 61962)", "PendingNotAccepted"]) {
+    assert.ok(transientSettlementWait(reason), reason);
+  }
+  for (const reason of ["BadSignature", "OrderExpired(1700000000)", "ExitTooSmall(500000, 1000000)", "ProceedsBelowMin(1, 2)", "NOT_EXPECTED_SENDER"]) {
+    assert.equal(transientSettlementWait(reason), undefined, reason);
+  }
 });

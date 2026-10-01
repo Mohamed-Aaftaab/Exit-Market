@@ -22,7 +22,16 @@ function suggestedPrice(sale: PreparedSale): string {
 }
 
 /** List the exit at the seller's own price: one signature redirects it to the market, which proves and lists it. */
-export function ListForm({ sale, list }: { sale: PreparedSale; list: ReturnType<typeof useListExit> }) {
+export function ListForm({
+  sale,
+  list,
+  blocked,
+}: {
+  sale: PreparedSale;
+  list: ReturnType<typeof useListExit>;
+  /** Why the market would refuse a listing right now; the form is disabled and says why. */
+  blocked: string | undefined;
+}) {
   const [priceInput, setPriceInput] = useState(() => suggestedPrice(sale));
   const [expiryIndex, setExpiryIndex] = useState(DEFAULT_EXPIRY);
 
@@ -33,7 +42,7 @@ export function ListForm({ sale, list }: { sale: PreparedSale; list: ReturnType<
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (price === undefined || aboveFace) return;
+    if (blocked || price === undefined || aboveFace) return;
     list.mutate({ withdrawal: sale.withdrawal, price, durationSeconds: BigInt(EXPIRIES[expiryIndex][1]) });
   };
 
@@ -84,7 +93,12 @@ export function ListForm({ sale, list }: { sale: PreparedSale; list: ReturnType<
         </p>
       </div>
 
-      <button type="submit" className="btn-primary w-full" disabled={price === undefined || aboveFace || list.isPending} aria-busy={list.isPending}>
+      {blocked && (
+        <p role="status" className="rounded-3xl bg-warn-soft px-4 py-3 text-sm text-warn">
+          {blocked}
+        </p>
+      )}
+      <button type="submit" className="btn-primary w-full" disabled={Boolean(blocked) || price === undefined || aboveFace || list.isPending} aria-busy={list.isPending}>
         {list.isPending ? "Confirm in wallet…" : `List for ${price === undefined ? "…" : usdg(price)} USDG`}
       </button>
       {list.isError && (

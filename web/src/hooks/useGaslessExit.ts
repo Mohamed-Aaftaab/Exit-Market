@@ -12,8 +12,11 @@ import {
   RELAYER_FEE,
   XAI_TESTNET,
   childRouterAbi,
+  vaultAbi,
   withdrawalInitiatedEvent,
 } from "@/lib/contracts";
+import { fastExitMinimum, vaultSizeRefusal } from "@/lib/exitLimits";
+import { usdg } from "@/lib/format";
 import {
   applyRelayResponse,
   mergeRelayed,
@@ -30,12 +33,6 @@ const STORAGE_KEY = "exit-market:gasless-intents:v2";
 const POLL_MS = 60_000;
 const ORDER_TTL_SECONDS = 24 * 60 * 60;
 const BPS = 10_000n;
-
-/**
- * Smallest amount a gasless exit can carry: the seller must still receive something after the 99% floor and the
- * relayer fee. Checked BEFORE the irreversible withdrawal, so a too-small exit can never strand funds.
- */
-export const MIN_GASLESS_AMOUNT = ((RELAYER_FEE + 1n) * BPS + GASLESS_MIN_BPS - 1n) / GASLESS_MIN_BPS;
 
 // A small external store over localStorage, shared by every component and kept in sync across tabs.
 const EMPTY: GaslessIntent[] = [];
@@ -107,6 +104,7 @@ export function useGaslessExit() {
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
   const child = usePublicClient({ chainId: xaiTestnet.id });
+  const parent = usePublicClient({ chainId: arbitrumSepolia.id });
   const intents = useSyncExternalStore(subscribe, load, () => EMPTY);
 
   const poll = useCallback(async () => {
@@ -163,8 +161,17 @@ export function useGaslessExit() {
     async (amount: bigint, onStep: (step: string) => void) => {
       const { router, vault } = DEPLOYMENT;
       if (!router || !vault) throw new Error("Gasless exits not configured");
-      if (!address || !child) throw new Error("Connect a wallet first");
-      if (amount < MIN_GASLESS_AMOUNT) throw new Error("Amount too small for a fast exit after the relayer fee");
+      if (!address || !child || !parent) throw new Error("Connect a wallet first");
+      // Checked BEFORE the irreversible withdrawal: an exit the vault cannot buy would sit in the router, and the
+      // seller of a fast exit holds no gas on Arbitrum to take it back.
+      const [minExit, maxExit] = await Promise.all([
+        parent.readContract({ address: vault, abi: vaultAbi, functionName: "minExitAmount" }),
+        parent.readContract({ address: vault, abi: vaultAbi, functionName: "maxExitAmount" }),
+      ]);
+      const minimum = fastExitMinimum(minExit);
+      if (amount < minimum) throw new Error(`Fast exits start at ${usdg(minimum)} USDG (the vault's minimum)`);
+      const tooLarge = vaultSizeRefusal(amount, { minExit, maxExit });
+      if (tooLarge) throw new Error(tooLarge);
 
       if (chainId !== xaiTestnet.id) await switchChainAsync({ chainId: xaiTestnet.id });
       onStep("Confirm the withdrawal on Xai Testnet…");
@@ -193,7 +200,7 @@ export function useGaslessExit() {
       await sign(unsigned, onStep);
       return withdrawalTx;
     },
-    [address, chainId, child, sign, switchChainAsync, writeContractAsync],
+    [address, chainId, child, parent, sign, switchChainAsync, writeContractAsync],
   );
 
   return { intents, start, sign, refresh: poll };

@@ -55,14 +55,15 @@ function ListingRow({ entry, data, me, state, onBuy, onCancel }: RowProps) {
       : "at or above face value";
 
   let action: ReactNode;
-  if (isMine || expired) {
+  if (isMine || (expired && me)) {
     action = (
       <button type="button" className="btn-dark" disabled={state.busy !== undefined} onClick={() => onCancel(id)}>
         {state.busy === "cancel" ? "Confirm in wallet…" : isMine ? "Cancel listing" : "Return to seller"}
       </button>
     );
-  } else if (!me) action = <span className="text-sm text-muted">Connect a wallet to buy</span>;
-  else {
+  } else if (!me) {
+    action = <span className="text-sm text-muted">{expired ? "Connect a wallet to return it to the seller" : "Connect a wallet to buy"}</span>;
+  } else {
     action = (
       <button type="button" className="btn-primary" disabled={!live || state.busy !== undefined} onClick={() => onBuy(id, listing.price)}>
         {state.busy === "buy" ? "Confirm in wallet…" : `Buy for ${usdg(listing.price)} USDG`}

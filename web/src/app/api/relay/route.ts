@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { InvalidWithdrawalError } from "@shared/exitProof.ts";
-import { SettlementRevertedError, trySettle } from "@shared/relay.ts";
+import { SettlementRevertedError, transientSettlementWait, trySettle } from "@shared/relay.ts";
 import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "@shared/networks.ts";
 import { DEPLOYMENT } from "@/lib/contracts";
 import { allowRequest, clientKeyOf, parseRelayRequest, runExclusive, type RelayRequest } from "@/lib/relayGuard";
@@ -75,10 +75,9 @@ export async function POST(request: Request) {
     // The request itself is at fault (bad signature, expired, below the seller's minimum, not a router
     // withdrawal, unknown tx): say exactly why. The client stops retrying these.
     if (err instanceof SettlementRevertedError) {
-      // The vault is only temporarily full: its earlier exits clear their window and refill it. Keep waiting.
-      if (/^(InsufficientLiquidity|TooManyOpenPositions)\b/.test(err.reason)) {
-        return Response.json({ status: "waiting", reason: "Waiting for vault liquidity" }, { status: 202 });
-      }
+      // Some reverts clear up by themselves (vault liquidity, a disputed or unconfirmed node): keep the order waiting.
+      const wait = transientSettlementWait(err.reason);
+      if (wait) return Response.json({ status: "waiting", reason: wait }, { status: 202 });
       return bad(err.reason, 422);
     }
     if (err instanceof InvalidWithdrawalError) return bad(err.message, 422);

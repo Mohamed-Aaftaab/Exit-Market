@@ -7,6 +7,7 @@ import { encodePacked, keccak256, type Hash, type PublicClient } from "viem";
 import { buildExitProof, type Withdrawal } from "@shared/exitProof.ts";
 import { encodeSellToBuyer, netOfMarketFee } from "@shared/hookData.ts";
 import { exitRecordFor } from "@shared/marketReads.ts";
+import type { VaultLimits } from "@/lib/exitLimits";
 import { DEPLOYMENT, XAI_TESTNET, marketAbi, outboxAbi, parentGatewayAbi, rollupAbi, vaultAbi } from "@/lib/contracts";
 import { xaiTestnet } from "@/lib/wagmi";
 import type { WithdrawalRow } from "./useWithdrawals";
@@ -32,6 +33,8 @@ export interface PreparedSale {
   vaultQuote: bigint;
   /** USDG the vault holds idle right now; a sale needs at least `vaultQuote` of it. */
   vaultIdle: bigint;
+  /** Exit sizes the vault buys at all (ExitTooSmall / ExitTooLarge outside them). */
+  vaultLimits: VaultLimits;
   marketFeeBps: number;
 }
 
@@ -58,9 +61,11 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
     parent.getBlock().then((b) => BigInt((b as unknown as { l1BlockNumber: string }).l1BlockNumber)),
     parent.readContract({ address: XAI_TESTNET.ethBridge.outbox, abi: outboxAbi, functionName: "isSpent", args: [p.index] }),
   ]);
-  const [vaultQuote, vaultIdle] = await Promise.all([
+  const [vaultQuote, vaultIdle, minExit, maxExit] = await Promise.all([
     parent.readContract({ address: vault, abi: vaultAbi, functionName: "quote", args: [record] }),
     parent.readContract({ address: vault, abi: vaultAbi, functionName: "idleAssets" }),
+    parent.readContract({ address: vault, abi: vaultAbi, functionName: "minExitAmount" }),
+    parent.readContract({ address: vault, abi: vaultAbi, functionName: "maxExitAmount" }),
   ]);
 
   return {
@@ -78,6 +83,7 @@ async function prepareSale(parent: PublicClient, child: PublicClient, row: Withd
     currentL1Block: l1Block,
     vaultQuote,
     vaultIdle,
+    vaultLimits: { minExit, maxExit },
     marketFeeBps: feeBps,
   };
 }

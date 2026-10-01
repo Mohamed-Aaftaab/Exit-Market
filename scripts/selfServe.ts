@@ -17,7 +17,7 @@ import { getClients, loadDeployment } from "./lib/clients.ts";
 import { buildExitProof } from "./lib/exitProof.ts";
 import { claimOf } from "./lib/hookData.ts";
 import { XAI_TESTNET } from "./lib/networks.ts";
-import { revertReason, trySettle, type SellOrder } from "./lib/relay.ts";
+import { SettlementRevertedError, revertReason, transientSettlementWait, trySettle, type SellOrder } from "./lib/relay.ts";
 
 const KEYS = ["RELAYER_PRIVATE_KEY", "KEEPER_PRIVATE_KEY", "DEPLOYER_PRIVATE_KEY"] as const;
 
@@ -38,18 +38,25 @@ async function settle(file: string) {
     deadline: BigInt(raw.order.deadline),
   };
   const { parent, child, parentWallet } = getClients(KEYS);
-  const result = await trySettle({
-    parent,
-    child,
-    wallet: parentWallet,
-    router: routerAddress(),
-    rollup: XAI_TESTNET.ethBridge.rollup,
-    childGateway: XAI_TESTNET.tokenBridge.childErc20Gateway,
-    withdrawalTx: raw.withdrawalTx,
-    order,
-    signature: raw.signature,
-  });
-  console.log(JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+  try {
+    const result = await trySettle({
+      parent,
+      child,
+      wallet: parentWallet,
+      router: routerAddress(),
+      rollup: XAI_TESTNET.ethBridge.rollup,
+      childGateway: XAI_TESTNET.tokenBridge.childErc20Gateway,
+      withdrawalTx: raw.withdrawalTx,
+      order,
+      signature: raw.signature,
+    });
+    console.log(JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+  } catch (err) {
+    // A revert that clears up by itself (vault liquidity, a disputed or unconfirmed node): try again later.
+    const wait = err instanceof SettlementRevertedError ? transientSettlementWait(err.reason) : undefined;
+    if (!wait) throw err;
+    console.log(JSON.stringify({ status: "waiting", reason: wait }));
+  }
 }
 
 async function reclaim(withdrawalTx: Hex) {

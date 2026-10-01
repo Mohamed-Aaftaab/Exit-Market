@@ -23,6 +23,7 @@ export {
   SettlementRevertedError,
   revertReason,
   routerDomain,
+  transientSettlementWait,
   trySettle,
   type RelayResult,
   type SellOrder,

@@ -68,6 +68,28 @@ export class SettlementRevertedError extends Error {
   }
 }
 
+/**
+ * What a seller is waiting for when a settlement reverts for a reason that clears up by itself, or undefined when the
+ * order itself is at fault (bad signature, expired, below the vault's minimum...) and needs the seller.
+ *   InsufficientLiquidity / TooManyOpenPositions: the vault refills as the exits it holds clear their window;
+ *   InvalidRoot: the node the proof uses is disputed (or not provable yet); each retry rebuilds the proof, and once a
+ *     covering node confirms, its root works;
+ *   PendingNotAccepted: the vault is not buying pending exits right now; it buys this one once its node confirms.
+ */
+export function transientSettlementWait(reason: string): string | undefined {
+  switch (reason.split("(")[0]) {
+    case "InsufficientLiquidity":
+    case "TooManyOpenPositions":
+      return "Waiting for vault liquidity: it refills as earlier exits clear their window";
+    case "InvalidRoot":
+      return "Its rollup node is disputed or not provable yet: waiting for a confirmed root";
+    case "PendingNotAccepted":
+      return "The vault buys this exit once its rollup node confirms";
+    default:
+      return undefined;
+  }
+}
+
 /** Names the revert reason inside a viem error: a custom error (with args), a revert string, or the raw selector. */
 export function revertReason(err: unknown): string | undefined {
   if (!(err instanceof BaseError)) return undefined;

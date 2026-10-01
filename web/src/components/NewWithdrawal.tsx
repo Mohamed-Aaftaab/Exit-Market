@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { TestFunds } from "@/components/TestFunds";
 import { useGaslessExit, type GaslessIntent } from "@/hooks/useGaslessExit";
-import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, childRouterAbi } from "@/lib/contracts";
+import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, childRouterAbi, vaultAbi } from "@/lib/contracts";
+import { fastExitMinimum } from "@/lib/exitLimits";
+import { failureAdvice } from "@/lib/intentStore";
 import { errorText, parseUsdgInput, usdg } from "@/lib/format";
 import { xaiTestnet } from "@/lib/wagmi";
 
@@ -26,7 +28,15 @@ function IntentState({ intent, onSign, isBusy }: { intent: GaslessIntent; onSign
     );
   }
   if (intent.status === "done-elsewhere") return <span className="text-muted">settled elsewhere</span>;
-  if (intent.status === "failed") return <span className="text-bad">{intent.detail}</span>;
+  if (intent.status === "failed") {
+    return failureAdvice(intent.detail).canResign ? (
+      <button type="button" className="text-warn underline disabled:opacity-50" onClick={onSign} disabled={isBusy}>
+        sign a new order
+      </button>
+    ) : (
+      <span className="text-bad">not settled</span>
+    );
+  }
   return (
     <span className="text-warn" title={intent.detail}>
       settling…
@@ -50,6 +60,13 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<string>();
   const [isBusy, setIsBusy] = useState(false);
+  const vaultMinExit = useReadContract({
+    chainId: arbitrumSepolia.id,
+    address: DEPLOYMENT.vault,
+    abi: vaultAbi,
+    functionName: "minExitAmount",
+    query: { enabled: Boolean(DEPLOYMENT.vault) },
+  });
 
   async function standardWithdraw(value: bigint) {
     if (!address || !child) return;
@@ -118,6 +135,9 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
           </label>
         </fieldset>
       )}
+      {isFast && vaultMinExit.data !== undefined && (
+        <p className="text-xs text-muted">Fast exits start at {usdg(fastExitMinimum(vaultMinExit.data))} USDG, the vault&apos;s minimum.</p>
+      )}
       <div className="flex gap-2">
         <label className="sr-only" htmlFor="withdraw-amount">
           USDG to withdraw from Xai
@@ -149,11 +169,14 @@ export function NewWithdrawal({ onStarted }: { onStarted: () => void }) {
       {gasless.intents.length > 0 && (
         <ul className="space-y-1 text-xs" aria-label="Gasless exits">
           {gasless.intents.slice(0, 5).map((i) => (
-            <li key={i.withdrawalTx} className="flex items-center justify-between gap-3 font-mono">
-              <span className="text-ink">
-                {usdg(BigInt(i.amount))} USDG · exit #{i.exitNum}
+            <li key={i.withdrawalTx} className="space-y-0.5">
+              <span className="flex items-center justify-between gap-3 font-mono">
+                <span className="text-ink">
+                  {usdg(BigInt(i.amount))} USDG · exit #{i.exitNum}
+                </span>
+                <IntentState intent={i} onSign={() => void signLater(i)} isBusy={isBusy} />
               </span>
-              <IntentState intent={i} onSign={() => void signLater(i)} isBusy={isBusy} />
+              {i.status === "failed" && <span className="block text-muted">{failureAdvice(i.detail).text}</span>}
             </li>
           ))}
         </ul>

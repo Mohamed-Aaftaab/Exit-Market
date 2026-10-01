@@ -5,6 +5,7 @@ import { ListForm } from "@/components/ListForm";
 import { ProofTrace } from "@/components/ProofTrace";
 import { usePreparedSale, useSellExit, type PreparedSale } from "@/hooks/useExitSale";
 import { useListExit } from "@/hooks/useListingActions";
+import { proofBlocker, vaultSizeRefusal } from "@/lib/exitLimits";
 import type { WithdrawalRow } from "@/hooks/useWithdrawals";
 import { arbitrumSepolia } from "wagmi/chains";
 import { blocksToDuration, bps, errorText, usdg } from "@/lib/format";
@@ -134,6 +135,8 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
 
   const sale = prepared.data;
   const b = breakdownOf(sale);
+  // What the market would refuse right now applies to both paths; the vault's size limits only to selling to it.
+  const blocked = proofBlocker(sale.checks);
 
   return (
     <div className="space-y-5 p-5">
@@ -146,10 +149,10 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
       {mode === "list" ? (
         <>
           <ProofTrace sale={sale} />
-          <ListForm sale={sale} list={list} />
+          <ListForm sale={sale} list={list} blocked={blocked} />
         </>
       ) : (
-        <InstantSale sale={sale} breakdown={b} sell={sell} />
+        <InstantSale sale={sale} breakdown={b} sell={sell} blocked={blocked ?? vaultSizeRefusal(sale.record.amount, sale.vaultLimits)} />
       )}
     </div>
   );
@@ -159,10 +162,13 @@ function InstantSale({
   sale,
   breakdown: b,
   sell,
+  blocked,
 }: {
   sale: PreparedSale;
   breakdown: ReturnType<typeof breakdownOf>;
   sell: ReturnType<typeof useSellExit>;
+  /** Why the chain would refuse this sale; the button is replaced by the reason. */
+  blocked: string | undefined;
 }) {
   // The vault pays from idle USDG; what it has spent on earlier exits returns as each clears its window.
   const hasLiquidity = sale.vaultIdle >= sale.vaultQuote;
@@ -177,7 +183,11 @@ function InstantSale({
 
       <ProofTrace sale={sale} />
 
-      {hasLiquidity ? (
+      {blocked ? (
+        <p role="status" className="rounded-3xl bg-warn-soft px-4 py-3 text-sm text-warn">
+          {blocked}
+        </p>
+      ) : hasLiquidity ? (
         <button
           type="button"
           disabled={sell.isPending}

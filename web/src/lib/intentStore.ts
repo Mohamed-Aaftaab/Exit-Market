@@ -75,3 +75,23 @@ export function applyRelayResponse(intent: GaslessIntent, response: RelayRespons
   }
   return { ...at, status: "retrying", detail: body.error ?? "Relayer busy, retrying" };
 }
+
+export interface FailureAdvice {
+  /** What happened and what the seller can do, in plain words. */
+  text: string;
+  /** A fresh signature fixes it (the old order only expired): offer to sign again. */
+  canResign: boolean;
+}
+
+/** What a failed gasless exit needs from its seller, from the relayer's reason (a contract error name, args). */
+export function failureAdvice(detail: string | undefined): FailureAdvice {
+  if (detail?.startsWith("OrderExpired")) {
+    return { text: "The signed order expired before it could settle. Sign a new one: it is free and needs no gas.", canResign: true };
+  }
+  return {
+    text:
+      `Not settled${detail ? ` (${detail})` : ""}. The exit is still yours: it can be returned to your address ` +
+      "(node scripts/selfServe.ts reclaim <withdrawal tx>; anyone may do it after 3 days) and then claimed from the bridge.",
+    canResign: false,
+  };
+}
