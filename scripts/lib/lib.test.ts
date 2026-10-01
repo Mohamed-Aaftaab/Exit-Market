@@ -5,6 +5,7 @@ import { BaseError, ContractFunctionRevertedError, encodeErrorResult, zeroAddres
 import { exitIntentRouterAbi } from "./abis.ts";
 import { claimOf, netOfMarketFee } from "./hookData.ts";
 import { listingEconomics, listingIdOf } from "./listings.ts";
+import { assertionHashOf } from "./boldProof.ts";
 import { SELL_ORDER_TYPES, revertReason } from "./relay.ts";
 import type { Withdrawal } from "./exitProof.ts";
 
@@ -91,4 +92,26 @@ test("listingEconomics: no annualised return without a discount or once the exit
   assert.equal(e.aprBps, undefined);
   const premium = { price: 2_100_000n, feeBps: 0, exit: { amount: 2_000_000n, deadlineBlock: 1_300n } };
   assert.equal(listingEconomics(premium, 1_000n).discount, -100_000n);
+});
+test("assertionHashOf reproduces a real Arbitrum One BOLD assertion hash from its preimage (fork fixture data)", () => {
+  // Read from contracts/test/fork/ArbOneExitFixture.sol, generated from live mainnet events.
+  const sol = readFileSync(new URL("../../contracts/test/fork/ArbOneExitFixture.sol", import.meta.url), "utf8");
+  const pick = (re: RegExp) => {
+    const m = re.exec(sol);
+    assert.ok(m, `fixture field not found: ${re}`);
+    return m.slice(1);
+  };
+  const [assertionHash] = pick(/ASSERTION_HASH = (0x[0-9a-f]{64});/);
+  const [parent] = pick(/PARENT_ASSERTION_HASH = (0x[0-9a-f]{64});/);
+  const [inboxAcc] = pick(/INBOX_ACC = (0x[0-9a-f]{64});/);
+  const [blockHash, sendRoot] = pick(/bytes32Vals: \[bytes32\((0x[0-9a-f]{64})\), bytes32\((0x[0-9a-f]{64})\)\]/);
+  const [u0, u1] = pick(/u64Vals: \[uint64\((\d+)\), uint64\((\d+)\)\]/);
+  const [machineStatus] = pick(/s\.machineStatus = (\d+);/);
+  const [endHistoryRoot] = pick(/s\.endHistoryRoot = (0x[0-9a-f]{64});/);
+  const afterState = {
+    globalState: { bytes32Vals: [blockHash as Hex, sendRoot as Hex] as const, u64Vals: [BigInt(u0), BigInt(u1)] as const },
+    machineStatus: Number(machineStatus),
+    endHistoryRoot: endHistoryRoot as Hex,
+  };
+  assert.equal(assertionHashOf(parent as Hex, afterState, inboxAcc as Hex), assertionHash);
 });

@@ -2,7 +2,8 @@ import { type Address, type Hex, type PublicClient, parseAbi, parseAbiItem } fro
 import { ARB_SYS, NODE_INTERFACE } from "./exitProof.ts";
 import { planChunks } from "./logScan.ts";
 
-const NODE_CONFIRMED = parseAbiItem("event NodeConfirmed(uint64 indexed nodeNum, bytes32 blockHash, bytes32 sendRoot)");
+/** Emitted by the Outbox whenever the rollup confirms a root: the same event for legacy nodes and BOLD assertions. */
+const SEND_ROOT_UPDATED = parseAbiItem("event SendRootUpdated(bytes32 indexed outputRoot, bytes32 indexed l2BlockHash)");
 // exitProof.ts keeps its copy of this event private, so the Outbox side declares its own.
 const L2_TO_L1_TX = parseAbiItem(
   "event L2ToL1Tx(address caller, address indexed destination, uint256 indexed hash, uint256 indexed position, uint256 arbBlockNum, uint256 ethBlockNum, uint256 timestamp, uint256 callvalue, bytes data)",
@@ -20,43 +21,46 @@ const nodeInterfaceAbi = parseAbi([
 ]);
 
 export interface ConfirmedRoot {
-  nodeNum: bigint;
   sendRoot: Hex;
+  /** Child block hash the root was confirmed with. */
+  blockHash: Hex;
   /** Number of child->parent messages committed by the root. */
   sendCount: bigint;
   /** Child block the root was taken at: every message it commits was sent at or before this block. */
   childBlock: bigint;
 }
 
-/** Newest confirmed legacy-rollup node, with the size of its send tree (read from the child block header). */
+/**
+ * Newest root the rollup confirmed into `outbox`, with the size of its send tree (read from the child block header).
+ * Rollup-agnostic: legacy nodes and BOLD assertions both confirm through Outbox.updateSendRoot.
+ */
 export async function latestConfirmedRoot(
   parent: PublicClient,
   child: PublicClient,
-  rollup: Address,
+  outbox: Address,
   lookbackBlocks = 200_000n,
 ): Promise<ConfirmedRoot> {
   const head = await parent.getBlockNumber();
   const logs = await parent.getLogs({
-    address: rollup,
-    event: NODE_CONFIRMED,
+    address: outbox,
+    event: SEND_ROOT_UPDATED,
     fromBlock: head > lookbackBlocks ? head - lookbackBlocks : 0n,
     toBlock: head,
   });
-  const last = logs.at(-1);
-  if (!last) throw new Error("No confirmed node in lookback window");
+  const last = logs.at(-1)?.args;
+  if (!last?.outputRoot || !last.l2BlockHash) throw new Error("No confirmed root in the lookback window");
   const block = (await child.request({
     method: "eth_getBlockByHash" as never,
-    params: [last.args.blockHash, false] as never,
+    params: [last.l2BlockHash, false] as never,
   })) as { number: Hex; sendCount: Hex; sendRoot: Hex } | null;
-  if (!block || block.sendRoot !== last.args.sendRoot) throw new Error("Confirmed node / child block mismatch");
+  if (!block || block.sendRoot !== last.outputRoot) throw new Error("Confirmed root / child block mismatch");
   return {
-    nodeNum: last.args.nodeNum!,
-    sendRoot: last.args.sendRoot!,
+    sendRoot: last.outputRoot,
+    blockHash: last.l2BlockHash,
     sendCount: BigInt(block.sendCount),
     childBlock: BigInt(block.number),
   };
 }
-
 /**
  * Everything needed to call Outbox.executeTransaction for message `position`. Scans [fromBlock, toBlock] newest
  * chunk first (exits being collected are recent) and stops at the first match. Pass `toBlock` when a bound is

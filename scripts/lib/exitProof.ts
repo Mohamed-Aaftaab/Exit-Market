@@ -29,9 +29,11 @@ export const ARB_SYS: Address = "0x0000000000000000000000000000000000000064";
 const NODE_INTERFACE_ABI = parseAbi([
   "function constructOutboxProof(uint64 size, uint64 leaf) view returns (bytes32 send, bytes32 root, bytes32[] proof)",
 ]);
-const ROLLUP_ABI = parseAbi(["function firstUnresolvedNode() view returns (uint64)"]);
+const ROLLUP_ABI = parseAbi(["function firstUnresolvedNode() view returns (uint64)", "function outbox() view returns (address)"]);
+const OUTBOX_ROOTS_ABI = parseAbi(["function roots(bytes32) view returns (bytes32)"]);
 
 const DEFAULT_LOOKBACK_BLOCKS = 50_000n;
+const ZERO_HASH: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
 /** Widening stops here (~11 days of Arbitrum Sepolia blocks): a validator idle for longer is a chain outage. */
 const MAX_LOOKBACK_BLOCKS = 3_200_000n;
 
@@ -128,10 +130,10 @@ export async function findLatestNode(
 }
 
 /**
- * The node to prove a withdrawal against: the EARLIEST still-unresolved node whose send root covers `position`.
- * An earlier node means an earlier deadline, so a better price for the seller and a shorter position for the
- * buyer. Falls back to the newest covering node when every covering node is already resolved.
- * @throws NotYetAssertedError when no node covers the withdrawal yet
+ * The node to prove a withdrawal against. A CONFIRMED node that covers `position` wins (its root is in the Outbox:
+ * no rollup risk and no wait, so the buyer charges no time discount); otherwise the EARLIEST still-unresolved
+ * covering node (an earlier deadline means a better price and a shorter position for the buyer).
+ * @throws NotYetAssertedError when no node covers the withdrawal yet, or only a rejected one does
  */
 export async function findCoveringNode(
   parent: PublicClient,
@@ -140,42 +142,58 @@ export async function findCoveringNode(
   position: bigint,
   lookbackBlocks = DEFAULT_LOOKBACK_BLOCKS,
 ): Promise<AssertedNode> {
-  const [logs, firstUnresolved] = await Promise.all([
+  const [logs, firstUnresolved, outbox] = await Promise.all([
     nodeLogs(parent, rollup, lookbackBlocks),
     parent.readContract({ address: rollup, abi: ROLLUP_ABI, functionName: "firstUnresolvedNode" }),
+    parent.readContract({ address: rollup, abi: ROLLUP_ABI, functionName: "outbox" }),
   ]);
   if (logs.length === 0) throw new Error("No rollup nodes found");
 
   let chosen: AssertedNode | undefined;
   let newestSendCount: bigint | undefined;
-  // Newest to oldest: stop at the first node that no longer covers the withdrawal, or that is resolved.
+  // Newest to oldest: keep the earliest pending covering node; the first resolved one ends the walk, and wins if
+  // it was confirmed (a rejected node's root never reaches the Outbox).
   for (const log of [...logs].reverse()) {
     const node = await describeNode(child, log);
     newestSendCount ??= node.sendCount;
     if (node.sendCount <= position) break;
-    const isPending = node.nodeNum >= firstUnresolved;
-    if (isPending || !chosen) chosen = node;
-    if (!isPending) break;
+    if (node.nodeNum >= firstUnresolved) {
+      chosen = node;
+      continue;
+    }
+    const confirmed = await parent.readContract({ address: outbox, abi: OUTBOX_ROOTS_ABI, functionName: "roots", args: [node.sendRoot] });
+    if (confirmed !== ZERO_HASH) chosen = node;
+    break;
   }
   if (!chosen) throw new NotYetAssertedError(position, newestSendCount ?? 0n);
   return chosen;
 }
 
+/** A child-chain token withdrawal as its transaction recorded it: everything a proof needs except the root. */
+export interface DecodedWithdrawal {
+  exitNum: bigint;
+  initialDestination: Address;
+  l1Token: Address;
+  from: Address;
+  amount: bigint;
+  extraData: Hex;
+  l2Block: bigint;
+  l1Block: bigint;
+  l2Timestamp: bigint;
+  /** Position of the message in the child chain's send tree (= Outbox index). */
+  position: bigint;
+}
+
 /**
- * Builds everything ExitMarket needs to verify a withdrawal against a PENDING assertion,
- * starting from the child-chain withdrawal transaction hash.
+ * Reads a gateway withdrawal from its child-chain transaction: the gateway's WithdrawalInitiated event and the
+ * matching ArbSys L2ToL1Tx message, cross-checked against each other. Rollup-agnostic (legacy and BOLD).
  */
-export async function buildExitProof(params: {
-  parent: PublicClient;
-  child: PublicClient;
-  rollup: Address;
-  childGateway: Address;
-  withdrawalTx: Hex;
-  /** Which withdrawal to prove when one transaction made several (defaults to the only one). */
-  exitNum?: bigint;
-  lookbackBlocks?: bigint;
-}): Promise<Withdrawal> {
-  const { parent, child, rollup, childGateway, withdrawalTx } = params;
+export async function decodeWithdrawal(
+  child: PublicClient,
+  childGateway: Address,
+  withdrawalTx: Hex,
+  exitNumHint?: bigint,
+): Promise<DecodedWithdrawal> {
   const receipt = await child.getTransactionReceipt({ hash: withdrawalTx });
 
   // Gateways also emit TxToL1 in the same tx, so filter by event signature, not just address.
@@ -183,12 +201,12 @@ export async function buildExitProof(params: {
     (l) => l.address.toLowerCase() === childGateway.toLowerCase(),
   );
   if (withdrawals.length === 0) throw new InvalidWithdrawalError("Tx is not a withdrawal through this gateway");
-  if (params.exitNum === undefined && withdrawals.length > 1) {
+  if (exitNumHint === undefined && withdrawals.length > 1) {
     throw new InvalidWithdrawalError(`Tx made ${withdrawals.length} withdrawals: pass the exitNum to prove`);
   }
   const initiated =
-    params.exitNum === undefined ? withdrawals[0] : withdrawals.find((l) => l.args._exitNum === params.exitNum);
-  if (!initiated) throw new InvalidWithdrawalError(`Tx has no withdrawal with exitNum ${params.exitNum}`);
+    exitNumHint === undefined ? withdrawals[0] : withdrawals.find((l) => l.args._exitNum === exitNumHint);
+  if (!initiated) throw new InvalidWithdrawalError(`Tx has no withdrawal with exitNum ${exitNumHint}`);
   const w = initiated.args;
 
   // Pick the ArbSys message whose id is the one the gateway reported.
@@ -206,31 +224,73 @@ export async function buildExitProof(params: {
   const [exitNum, extraData] = decodeAbiParameters([{ type: "uint256" }, { type: "bytes" }], gatewayMsg);
   if (exitNum !== w._exitNum) throw new Error("exitNum mismatch between events");
 
-  const node = await findCoveringNode(parent, child, rollup, m.position, params.lookbackBlocks);
+  return {
+    exitNum,
+    initialDestination: w._to,
+    l1Token: w.l1Token,
+    from: w._from,
+    amount: w._amount,
+    extraData,
+    l2Block: m.arbBlockNum,
+    l1Block: m.ethBlockNum,
+    l2Timestamp: m.timestamp,
+    position: m.position,
+  };
+}
+
+/** Merkle path for the message at `position` in the send tree of `sendCount` messages, from NodeInterface. */
+export async function outboxPathOf(child: PublicClient, sendCount: bigint, position: bigint, expectedRoot: Hex): Promise<Hex[]> {
   const [, root, merkleProof] = await child.readContract({
     address: NODE_INTERFACE,
     abi: NODE_INTERFACE_ABI,
     functionName: "constructOutboxProof",
-    args: [node.sendCount, m.position],
+    args: [sendCount, position],
   });
-  if (root !== node.sendRoot) throw new Error("NodeInterface root does not match node sendRoot");
+  if (root !== expectedRoot) throw new Error("NodeInterface root does not match the committed sendRoot");
+  return [...merkleProof];
+}
 
+/** The proof fields ExitMarket checks, for `d` under a root committed as (sendRoot, nodeNum, blockHash). */
+export function toExitProof(
+  d: DecodedWithdrawal,
+  merkleProof: Hex[],
+  commitment: { sendRoot: Hex; nodeNum: bigint; blockHash: Hex },
+): Withdrawal {
   return {
-    exitNum,
-    initialDestination: w._to,
+    exitNum: d.exitNum,
+    initialDestination: d.initialDestination,
     proof: {
-      l1Token: w.l1Token,
-      from: w._from,
-      amount: w._amount,
-      extraData,
-      l2Block: m.arbBlockNum,
-      l1Block: m.ethBlockNum,
-      l2Timestamp: m.timestamp,
-      index: m.position,
-      merkleProof: [...merkleProof],
-      sendRoot: node.sendRoot,
-      nodeNum: node.nodeNum,
-      blockHash: node.blockHash,
+      l1Token: d.l1Token,
+      from: d.from,
+      amount: d.amount,
+      extraData: d.extraData,
+      l2Block: d.l2Block,
+      l1Block: d.l1Block,
+      l2Timestamp: d.l2Timestamp,
+      index: d.position,
+      merkleProof,
+      ...commitment,
     },
   };
+}
+
+/**
+ * Builds everything ExitMarket needs to verify a withdrawal against a PENDING node of a legacy (pre-BOLD) rollup,
+ * starting from the child-chain withdrawal transaction hash. For BOLD rollups see boldProof.ts.
+ */
+export async function buildExitProof(params: {
+  parent: PublicClient;
+  child: PublicClient;
+  rollup: Address;
+  childGateway: Address;
+  withdrawalTx: Hex;
+  /** Which withdrawal to prove when one transaction made several (defaults to the only one). */
+  exitNum?: bigint;
+  lookbackBlocks?: bigint;
+}): Promise<Withdrawal> {
+  const { parent, child, rollup, childGateway, withdrawalTx } = params;
+  const d = await decodeWithdrawal(child, childGateway, withdrawalTx, params.exitNum);
+  const node = await findCoveringNode(parent, child, rollup, d.position, params.lookbackBlocks);
+  const merkleProof = await outboxPathOf(child, node.sendCount, d.position, node.sendRoot);
+  return toExitProof(d, merkleProof, { sendRoot: node.sendRoot, nodeNum: node.nodeNum, blockHash: node.blockHash });
 }

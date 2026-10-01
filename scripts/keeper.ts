@@ -131,9 +131,9 @@ export async function runOnce({ clients = getClients(KEEPER_KEYS), deployment = 
   const head = await parent.getBlockNumber();
   const [scan, confirmed] = await Promise.all([
     scanVerified(parent, d.market, startBlock(d, head), head),
-    latestConfirmedRoot(parent, child, XAI_TESTNET.ethBridge.rollup),
+    latestConfirmedRoot(parent, child, XAI_TESTNET.ethBridge.outbox),
   ]);
-  console.log(`${new Date().toISOString()} ${scan.logs.length} verified exits; confirmed node #${confirmed.nodeNum} covers ${confirmed.sendCount} sends`);
+  console.log(`${new Date().toISOString()} ${scan.logs.length} verified exits; latest confirmed root covers ${confirmed.sendCount} sends`);
 
   // An exit listed, cancelled and listed again is verified twice: only its latest record matters.
   const latest = new Map<Hex, ExitRecord>();

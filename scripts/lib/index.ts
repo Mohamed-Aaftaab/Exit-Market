@@ -9,9 +9,11 @@ export {
   InvalidWithdrawalError,
   NotYetAssertedError,
   buildExitProof,
+  decodeWithdrawal,
   findCoveringNode,
   findLatestNode,
   type AssertedNode,
+  type DecodedWithdrawal,
   type ExitProof,
   type Withdrawal,
 } from "./exitProof.ts";
@@ -25,6 +27,19 @@ export {
   type RelayResult,
   type SellOrder,
 } from "./relay.ts";
+export {
+  ASSERTION_CREATED,
+  assertionHashOf,
+  buildBoldExitProof,
+  findCoveringAssertion,
+  loadAssertions,
+  toBoldAssertion,
+  unregistered,
+  type BoldAssertion,
+  type BoldAssertionState,
+  type CoveringAssertion,
+} from "./boldProof.ts";
+export { latestConfirmedRoot, outboxMessage, outboxProof, type ConfirmedRoot } from "./outbox.ts";
 export {
   ListingStatus,
   listingEconomics,
