@@ -5,7 +5,8 @@ import { SiteNav } from "./SiteNav";
 import styles from "./site.module.css";
 
 type Props = {
-  active: PageId;
+  /** The nav item to mark as current; none on pages outside the nav (404, error). */
+  active?: PageId;
   eyebrow: string;
   title: string;
   lead?: ReactNode;

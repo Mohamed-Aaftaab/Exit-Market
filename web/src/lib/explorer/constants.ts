@@ -26,6 +26,8 @@ export const NODE_LOOKBACK = 2_000_000n;
 export const MAX_PENDING_NODES = 32;
 
 export const PARENT_EXPLORER_URL = "https://sepolia.arbiscan.io";
+/** Where our contracts' source can be read: Blockscout shows the code verified on Sourcify (exact match). */
+export const PARENT_CODE_EXPLORER_URL = "https://arbitrum-sepolia.blockscout.com";
 export const MAINNET_EXPLORER_URL = "https://arbiscan.io";
 
 export type OurContract = "market" | "vault" | "router";

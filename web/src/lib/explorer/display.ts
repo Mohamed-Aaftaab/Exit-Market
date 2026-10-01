@@ -1,7 +1,7 @@
 import { formatUnits, type Address, type Hash } from "viem";
 import { XAI_TESTNET } from "@shared/networks.ts";
 import { shortHex } from "@/lib/format";
-import { MAINNET_EXPLORER_URL, OUR_CONTRACT_LABEL, PARENT_EXPLORER_URL } from "./constants";
+import { MAINNET_EXPLORER_URL, OUR_CONTRACT_LABEL, PARENT_CODE_EXPLORER_URL, PARENT_EXPLORER_URL } from "./constants";
 import type { ExitToken, ExplorerExit, TokenTotal } from "./status";
 
 const DEFAULT_DECIMALS = 18;
@@ -10,6 +10,8 @@ export const xaiTxUrl = (hash: Hash) => `${XAI_TESTNET.explorerUrl}/tx/${hash}`;
 export const xaiAddressUrl = (address: Address) => `${XAI_TESTNET.explorerUrl}/address/${address}`;
 export const parentTxUrl = (hash: Hash) => `${PARENT_EXPLORER_URL}/tx/${hash}`;
 export const parentAddressUrl = (address: Address) => `${PARENT_EXPLORER_URL}/address/${address}`;
+/** One of our contracts, opened on its verified source. */
+export const contractCodeUrl = (address: Address) => `${PARENT_CODE_EXPLORER_URL}/address/${address}?tab=contract`;
 export const mainnetTxUrl = (hash: string) => `${MAINNET_EXPLORER_URL}/tx/${hash}`;
 
 export function tokenSymbol(token: ExitToken): string {

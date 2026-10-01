@@ -8,7 +8,7 @@ import styles from "./site.module.css";
 const MOBILE_MAX = 720;
 
 /** Burger + full-screen sheet shown at <= 720px. Closes on overlay click, Escape, link click or resize. */
-export function MobileMenu({ active }: { active: PageId }) {
+export function MobileMenu({ active }: { active?: PageId }) {
   const [isOpen, setIsOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLElement>(null);

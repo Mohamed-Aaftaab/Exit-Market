@@ -3,6 +3,7 @@ import type { Address } from "viem";
 import { blocksToDuration, shortHex } from "@/lib/format";
 import {
   ageText,
+  contractCodeUrl,
   ownerLabel,
   parentAddressUrl,
   parentTxUrl,
@@ -101,7 +102,7 @@ export function OwnerCell({ exit }: { exit: ExplorerExit }) {
   return (
     <span className="flex flex-col items-start gap-0.5">
       {exit.ownerContract ? (
-        <ExternalLink href={parentAddressUrl(exit.owner)} className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+        <ExternalLink href={contractCodeUrl(exit.owner)} className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
           <span title={exit.owner}>{ownerLabel(exit)}</span>
         </ExternalLink>
       ) : (
