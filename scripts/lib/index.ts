@@ -41,7 +41,8 @@ export {
   type CoveringAssertion,
 } from "./boldProof.ts";
 export { exitRecordFor, rootVerdict, type RootVerdict } from "./marketReads.ts";
-export { latestConfirmedRoot, outboxMessage, outboxProof, type ConfirmedRoot } from "./outbox.ts";
+export { latestConfirmedRoot, outboxMessage, outboxProof, outboxRootOf, type ConfirmedRoot } from "./outbox.ts";
+export { keeperStep, type ExitFacts, type KeeperStep } from "./keeperPlan.ts";
 export {
   ListingStatus,
   listingEconomics,

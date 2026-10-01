@@ -1,0 +1,34 @@
+name: Keeper
+
+# The permissionless keeper (scripts/keeper.ts) on a schedule, so the live deployment needs nobody's laptop: once an
+# exit's challenge window ends it executes the exit through the Outbox, collects it for the vault (refilling the
+# liquidity the next seller is paid from), settles listings that paid out and writes off exits from rejected nodes.
+# It signs with a dedicated testnet key holding a little Arbitrum Sepolia ETH (repository secret KEEPER_PRIVATE_KEY),
+# never the deployer's. GitHub may start scheduled runs late; anyone can also run the keeper themselves.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One pass at a time: a slow pass is never raced by the next one with the same key.
+concurrency:
+  group: keeper
+  cancel-in-progress: false
+
+jobs:
+  keeper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/keeper.ts
+        env:
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}

@@ -7,10 +7,13 @@ import { XAI_TESTNET, xaiTestnet } from "./networks.ts";
 
 export { xaiTestnet };
 
-/** Value of the first of `names` that is set, so a role key can fall back to the deployer's. */
+/**
+ * Value of the first of `names` that is set, so a role key can fall back to the deployer's. Trimmed: a key pasted
+ * into a CI secret or piped through a shell often carries a trailing newline.
+ */
 function requireEnv(...names: string[]): string {
   for (const name of names) {
-    const value = process.env[name];
+    const value = process.env[name]?.trim();
     if (value) return value;
   }
   throw new Error(`Missing ${names.join(" or ")} in .env (see .env.example)`);

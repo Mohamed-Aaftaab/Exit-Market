@@ -1,4 +1,4 @@
-import { type Address, type Hex, type PublicClient, parseAbi, parseAbiItem } from "viem";
+import { type Address, type Hex, type PublicClient, concat, keccak256, parseAbi, parseAbiItem } from "viem";
 import { ARB_SYS, NODE_INTERFACE } from "./exitProof.ts";
 import { planChunks } from "./logScan.ts";
 
@@ -79,6 +79,18 @@ export async function outboxMessage(
     if (m) return m as Required<typeof m>;
   }
   throw new Error(`L2ToL1Tx #${position} not found in child blocks ${fromBlock}-${toBlock}`);
+}
+
+/**
+ * Send-tree root implied by Outbox item `item` at `index` with sibling path `proof`; mirrors ExitLeaf.rootFromItem
+ * (the Outbox hashes the item once more as a leaf). Equal to a confirmed root exactly when that root holds the item
+ * at that index, which is what ExitMarket.isExitPaidOut and ExitVault.collect require.
+ */
+export function outboxRootOf(item: Hex, proof: readonly Hex[], index: bigint): Hex {
+  return proof.reduce<Hex>(
+    (h, sibling, i) => ((index >> BigInt(i)) & 1n ? keccak256(concat([sibling, h])) : keccak256(concat([h, sibling]))),
+    keccak256(item),
+  );
 }
 
 /** Merkle proof of message `position` in the send tree of size `size` (via the child chain's NodeInterface). */

@@ -22,11 +22,13 @@ Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain 
    withdrawal, its sale while pending, a listing bought by another wallet, and the keeper settling each one.
 3. **Use the [desk](https://exit-market-gamma.vercel.app/app)** with a browser wallet (MetaMask, Rabby). An empty
    wallet is fine: **Get test funds** sends 1.5 USDG and sXAI gas on Xai Testnet (once per address). Then start
-   a **Fast exit** of at least 1 USDG (the vault's minimum): it needs no ETH on Arbitrum Sepolia, the site's relayer settles it as soon as Xai's next node
-   posts (~15 minutes). Selling to the vault yourself, listing at your price or buying a listing are one
-   transaction each on Arbitrum Sepolia and need a little ETH there
+   a **Fast exit** of at least 1 USDG (the vault's minimum): it needs no ETH on Arbitrum Sepolia, and the site's
+   relayer settles it as soon as Xai's next node posts (~15 minutes). Selling to the vault yourself, listing at
+   your price or buying a listing are one transaction each on Arbitrum Sepolia and need a little ETH there
    ([Alchemy faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)). The scripts in
-   [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key.
+   [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key. A keeper runs every
+   10 minutes on GitHub Actions ([`keeper.yml`](.github/workflows/keeper.yml)): once an exit's challenge window
+   ends it executes it, so the vault collects face value and its liquidity refills for the next seller.
 
 **Testnet caveat.** Xai Testnet's challenge period is 150 L1 blocks (about 30 minutes), so the live demo and the
 Explorer show minutes. Arbitrum One and mainnet Orbit chains use 45,818 blocks, about 6.4 days, which is the wait
@@ -196,13 +198,13 @@ npm run test:fork                              # + 10 fork tests against Xai Tes
 npm run test:lib && npm run test:web           # library and web unit tests
 npm run typecheck                              # both TypeScript projects
 npm run web:dev                                # http://localhost:3000, no configuration needed
-node scripts/keeper.ts --loop                  # permissionless keeper
+node scripts/keeper.ts --loop                  # permissionless keeper (also scheduled: .github/workflows/keeper.yml)
 node scripts/selfServe.ts settle <intent.json>  # be your own relayer (or: reclaim <withdrawalTx>)
 ```
 
 (*) Public RPCs keep only recent Arbitrum Sepolia state, so the four Xai fork tests skip, with a message, once their
-pinned block ages out of that window. `node scripts/dev/makeForkFixture.ts <withdrawal tx>` re-pins them to a live pending
-node, or set `ARB_SEPOLIA_RPC_URL` to an archive node.
+pinned block ages out of that window. `node scripts/dev/makeForkFixture.ts <withdrawal tx>` re-pins them to a live
+pending node, or set `ARB_SEPOLIA_RPC_URL` to an archive node.
 
 ## Deployments (Arbitrum Sepolia, v4)
 

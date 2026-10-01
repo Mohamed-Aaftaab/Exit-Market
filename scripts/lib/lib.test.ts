@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { BaseError, ContractFunctionRevertedError, encodeErrorResult, zeroAddress, type Hex } from "viem";
 import { exitIntentRouterAbi } from "./abis.ts";
-import { claimOf, netOfMarketFee } from "./hookData.ts";
+import { claimOf, exitItemHash, netOfMarketFee } from "./hookData.ts";
+import { keeperStep, type ExitFacts } from "./keeperPlan.ts";
 import { listingEconomics, listingIdOf } from "./listings.ts";
 import { assertionHashOf } from "./boldProof.ts";
+import { outboxRootOf } from "./outbox.ts";
 import { SELL_ORDER_TYPES, revertReason, transientSettlementWait } from "./relay.ts";
 import type { Withdrawal } from "./exitProof.ts";
 
@@ -122,4 +124,67 @@ test("transientSettlementWait keeps orders waiting through reverts that clear up
   for (const reason of ["BadSignature", "OrderExpired(1700000000)", "ExitTooSmall(500000, 1000000)", "ProceedsBelowMin(1, 2)", "NOT_EXPECTED_SENDER"]) {
     assert.equal(transientSettlementWait(reason), undefined, reason);
   }
+});
+
+test("outboxRootOf rebuilds a live Xai Testnet send root from a real withdrawal (exit #3, index 72, node 61781)", () => {
+  // The same vector scripts/stylus/goldenCheck.ts checks on-chain against the Stylus program.
+  const proof: Hex[] = [
+    "0x6e2f997569dd82bdb30c0ce25af0633f7331c580d4b6aaf1cd8904f3b4c7113a",
+    "0xcebc5eda66a599bf0568aae47dde4cefb5f543fbca405016aa3c1490490a2973",
+    "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "0x3a2d5e8fcce99f0fd08bd609d1303903ab54e9ddfa2730834e14562f11b17dac",
+    "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "0x2355f193840f04fc94aed433f911e03a9935a907db640130efbaf69442f7ddd6",
+  ];
+  const sendRoot: Hex = "0xd8a1c3386ad861c9533e67e76d0f3e403adb04a819775a7ec0ca2404c462b583";
+  const owner = "0x2cd28Cda6825C4967372478E87D004637B73F996";
+  const w: Withdrawal = {
+    exitNum: 3n,
+    initialDestination: owner,
+    proof: {
+      l1Token: "0x67e197D575e7A350Ff3dE1A7eAd2aA06b19145B6",
+      from: owner,
+      amount: 1_000_000_000_000_000n,
+      extraData: "0x",
+      l2Block: 14_217_403n,
+      l1Block: 9_173_964n,
+      l2Timestamp: 1_757_504_867n,
+      index: 72n,
+      merkleProof: proof,
+      sendRoot,
+      nodeNum: 61_781n,
+      blockHash: `0x${"0".repeat(64)}`,
+    },
+  };
+  const item = exitItemHash(w, "0xD840761a09609394FaFA3404bEEAb312059AC558", "0xCcB451C4Df22addCFe1447c58bC6b2f264Bb1256");
+  assert.equal(outboxRootOf(item, proof, 72n), sendRoot);
+  assert.notEqual(outboxRootOf(item, proof, 73n), sendRoot); // another index: another message's slot
+});
+
+const FACTS: ExitFacts = { spent: false, covered: true, itemConfirmed: true, vault: undefined, listed: false, rejected: false };
+
+test("keeperStep: confirmed exits are executed, then collected by the vault or settled for a listing's seller", () => {
+  assert.deepEqual(keeperStep({ ...FACTS, vault: { writtenOff: false } }), { kind: "collect" });
+  assert.deepEqual(keeperStep({ ...FACTS, spent: true, vault: { writtenOff: true } }), { kind: "collect" }); // re-credited
+  assert.deepEqual(keeperStep({ ...FACTS, listed: true }), { kind: "settle" });
+  assert.deepEqual(keeperStep(FACTS), { kind: "execute" }); // a listing's buyer is paid by the Outbox directly
+  assert.deepEqual(keeperStep({ ...FACTS, spent: true }), { kind: "done" });
+});
+
+test("keeperStep: a rejected vault exit is written off whether or not the confirmed root has reached its index", () => {
+  const rejected = { ...FACTS, vault: { writtenOff: false }, rejected: true };
+  assert.deepEqual(keeperStep({ ...rejected, covered: false, itemConfirmed: false }), { kind: "write-off" });
+  // The honest chain now covers the index with a different message: collect can never succeed, write off instead.
+  assert.deepEqual(keeperStep({ ...rejected, itemConfirmed: false }), { kind: "write-off" });
+  assert.deepEqual(keeperStep({ ...rejected, spent: true, itemConfirmed: false }), { kind: "write-off" });
+  // Re-committed by the honest node: the real exit pays out, so it is collected rather than written off.
+  assert.deepEqual(keeperStep(rejected), { kind: "collect" });
+});
+
+test("keeperStep: waits on pending exits and stops on exits no keeper can finish", () => {
+  assert.equal(keeperStep({ ...FACTS, covered: false, itemConfirmed: false, vault: { writtenOff: false } }).kind, "wait");
+  assert.equal(keeperStep({ ...FACTS, itemConfirmed: false, vault: { writtenOff: false } }).kind, "wait"); // not rejected yet
+  assert.deepEqual(keeperStep({ ...FACTS, itemConfirmed: false, vault: { writtenOff: true }, rejected: true }), { kind: "done" });
+  assert.deepEqual(keeperStep({ ...FACTS, itemConfirmed: false, listed: true }), { kind: "done" });
 });

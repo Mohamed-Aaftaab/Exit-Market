@@ -1,20 +1,23 @@
 /**
  * Exit Market keeper: completes the lifecycle of every exit the market verified.
- *   pending  -> nothing to do yet (if the vault holds it and its node was rejected: vault.writeOff, so it stops
- *               being carried at cost; it stays collectable if it pays out later)
- *   covered by a confirmed root -> Outbox.executeTransaction, which pays whoever owns the exit (the vault, a
+ *   pending  -> nothing to do yet
+ *   held by a confirmed root -> Outbox.executeTransaction, which pays whoever owns the exit (the vault, a
  *               listing's buyer, a seller who cancelled), then: vault.collect if the vault holds it, or
  *               market.settle if it was still listed (the seller gets face value)
+ *   node rejected, vault-held, not paid out under the confirmed root -> vault.writeOff, so it stops being carried
+ *               at cost (it stays collectable if it pays out later), whether or not the confirmed root has reached
+ *               its index yet. The decision table is keeperStep (scripts/lib/keeperPlan.ts, tested)
  * Permissionless: anyone can run it with any funded key (KEEPER_PRIVATE_KEY, else DEPLOYER_PRIVATE_KEY).
  * Usage: node scripts/keeper.ts [--loop]
  */
 import { BaseError, encodeAbiParameters, formatUnits, getAbiItem, keccak256, type Hash, type Hex } from "viem";
 import { exitMarketAbi, exitVaultAbi } from "./lib/abis.ts";
 import { getClients, loadDeployment, type Deployment } from "./lib/clients.ts";
+import { keeperStep } from "./lib/keeperPlan.ts";
 import { ListingStatus } from "./lib/listings.ts";
 import { getLogsChunked } from "./lib/logScan.ts";
 import { XAI_TESTNET } from "./lib/networks.ts";
-import { latestConfirmedRoot, outboxAbi, outboxMessage, outboxProof, type ConfirmedRoot } from "./lib/outbox.ts";
+import { latestConfirmedRoot, outboxAbi, outboxMessage, outboxProof, outboxRootOf, type ConfirmedRoot } from "./lib/outbox.ts";
 
 const EXIT_VERIFIED = getAbiItem({ abi: exitMarketAbi, name: "ExitVerified" });
 const KEEPER_KEYS = ["KEEPER_PRIVATE_KEY", "DEPLOYER_PRIVATE_KEY"];
@@ -95,31 +98,38 @@ async function holderOf({ parent }: Clients, d: Deployment, id: Hex, exit: ExitR
 async function processExit(clients: Clients, d: Deployment, confirmed: ConfirmedRoot, id: Hex, exit: ExitRecord, tag: string) {
   const { parent, parentWallet, child } = clients;
   const [holder, spent] = await Promise.all([holderOf(clients, d, id, exit), isSpent(parent, exit.index)]);
-
-  if (!spent && exit.index >= confirmed.sendCount) {
-    const { vault } = holder;
-    if (vault && !vault.writtenOff && (await parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "isExitRejected", args: [exit] }))) {
-      const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "writeOff", args: [exit] });
-      console.log(`  ${tag}: node rejected -> writeOff ${await waitSuccess(parent, hash, "writeOff")}`);
-    } else {
-      const where = vault ? `vault, cost ${formatUnits(vault.cost, 6)}` : holder.listed ? "listed" : "owner's";
-      console.log(`  ${tag}: pending (${where}), waiting for confirmation`);
-    }
-    return;
-  }
-  // Executed and nothing of ours holds it: the Outbox already paid its owner.
+  // Executed and nothing of ours holds it: the Outbox already paid its owner (most historical exits end here).
   if (spent && !holder.vault && !holder.listed) return;
 
-  // Proof against the latest confirmed root (may differ from the pending root the exit was proven against).
-  const { root, proof } = await outboxProof(child, confirmed.sendCount, exit.index);
-  if (root !== confirmed.sendRoot) throw new Error("NodeInterface root mismatch");
-  if (!spent) await executeOutbox(clients, exit, confirmed, proof, tag);
+  const covered = exit.index < confirmed.sendCount;
+  const [rejected, path] = await Promise.all([
+    parent.readContract({ address: d.market, abi: exitMarketAbi, functionName: "isExitRejected", args: [exit] }),
+    // Proof against the latest confirmed root (may differ from the pending root the exit was proven against).
+    covered ? outboxProof(child, confirmed.sendCount, exit.index) : undefined,
+  ]);
+  if (path && path.root !== confirmed.sendRoot) throw new Error("NodeInterface root mismatch");
+  const itemConfirmed = path !== undefined && outboxRootOf(exit.itemHash, path.proof, exit.index) === confirmed.sendRoot;
+  const step = keeperStep({ spent, covered, itemConfirmed, vault: holder.vault, listed: holder.listed, rejected });
 
-  const payout = { index: exit.index, confirmedRoot: confirmed.sendRoot, proof };
-  if (holder.vault) {
+  if (step.kind === "done") return;
+  if (step.kind === "wait") {
+    const where = holder.vault ? `vault, cost ${formatUnits(holder.vault.cost, 6)}` : holder.listed ? "listed" : "owner's";
+    console.log(`  ${tag}: ${step.why} (${where})`);
+    return;
+  }
+  if (step.kind === "write-off") {
+    const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "writeOff", args: [exit] });
+    console.log(`  ${tag}: node rejected -> writeOff ${await waitSuccess(parent, hash, "writeOff")}`);
+    return;
+  }
+
+  // collect / settle / execute: the confirmed root holds this exit, so run its Outbox message if nobody has.
+  const payout = { index: exit.index, confirmedRoot: confirmed.sendRoot, proof: path!.proof };
+  if (!spent) await executeOutbox(clients, exit, confirmed, payout.proof, tag);
+  if (step.kind === "collect") {
     const hash = await parentWallet.writeContract({ address: d.vault, abi: exitVaultAbi, functionName: "collect", args: [exit, payout] });
     console.log(`  ${tag}: collected ${await waitSuccess(parent, hash, "collect")}`);
-  } else if (holder.listed) {
+  } else if (step.kind === "settle") {
     const hash = await parentWallet.writeContract({ address: d.market, abi: exitMarketAbi, functionName: "settle", args: [id, payout] });
     console.log(`  ${tag}: paid out while listed -> settled to the seller ${await waitSuccess(parent, hash, "settle")}`);
   }
