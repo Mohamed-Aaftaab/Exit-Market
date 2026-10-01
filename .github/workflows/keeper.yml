@@ -5,9 +5,11 @@ name: Keeper
 # the next seller is paid from), settles listings that paid out and writes off exits from rejected nodes.
 #
 # Each run keeps the keeper going (a pass every 5 minutes) for 55 minutes, then dispatches the next run, so it runs
-# around the clock without depending on GitHub's cron, which may start late or skip. The hourly schedule only restarts
-# the chain if it ever breaks (a failed or cancelled run does not hand over, so cancelling a run stops it). It signs with a dedicated testnet key holding a
-# little Arbitrum Sepolia ETH (repository secret KEEPER_PRIVATE_KEY), never the deployer's.
+# around the clock without depending on GitHub's cron, which may start late or skip. A failed run still hands over,
+# after a 5-minute pause, so a transient error (an npm or RPC outage) cannot stop the chain and a broken setup retries
+# slowly instead of respawning at once. Cancelling a run by hand stops the chain; the hourly schedule restarts it if
+# GitHub ever runs it. It signs with a dedicated testnet key holding a little Arbitrum Sepolia ETH (repository secret
+# KEEPER_PRIVATE_KEY), never the deployer's.
 on:
   schedule:
     - cron: "17 * * * *"
@@ -25,20 +27,27 @@ concurrency:
 jobs:
   keeper:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 80
     steps:
+      # The job token can dispatch and cancel workflows: keep it out of .git/config, where any later step could read it.
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: node scripts/keeper.ts --minutes 55
+      # The keeper needs no dependency install scripts, so none of them run in a job that holds a key.
+      - run: npm ci --ignore-scripts
+      # `timeout` bounds a hung RPC call: the step then fails and the chain still hands over.
+      - run: timeout 62m node scripts/keeper.ts --minutes 55
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
-      # Only after a successful run: a broken run must not respawn every minute (the hourly schedule retries instead).
       - name: Hand over to the next run
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
-        run: gh workflow run keeper.yml --ref main --repo "$GITHUB_REPOSITORY"
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        run: |
+          if [ "$JOB_STATUS" != "success" ]; then sleep 300; fi
+          gh workflow run keeper.yml --ref main --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
