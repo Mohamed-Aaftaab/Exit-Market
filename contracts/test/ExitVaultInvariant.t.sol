@@ -251,15 +251,28 @@ contract VaultHandler is ExitFixture {
         uint64 n = rollup.firstUnresolvedNode();
         if (n >= _nextNode) return;
         uint256 p0 = _price();
-        bool reject = seed % 3 == 0;
+        // RollupCore confirms only a child of the latest confirmed node; any other node can only be rejected.
+        bool reject = seed % 3 == 0 || rollup.getNode(n).prevNum != rollup.latestConfirmed();
         if (!reject) {
             if (vm.getBlockNumber() < _nodeDeadline[n]) return;
             outbox.setRoot(_nodeRoot[n], keccak256("confirmed"));
+            rollup.setLatestConfirmed(n);
         } else {
             ++nRejectedNodes;
         }
         rollup.setFirstUnresolvedNode(n + 1);
+        if (reject) _rejectDoomedDescendants();
         if (!reject && _price() < p0) _fail("confirming a node lowered the share price");
+    }
+
+    /// @dev Nodes built on a rejected node are doomed and RollupCore can reject them right away; the honest chain
+    ///      then resumes from the latest confirmed node.
+    function _rejectDoomedDescendants() internal {
+        uint64 n = rollup.firstUnresolvedNode();
+        while (n < _nextNode && rollup.getNode(n).prevNum != rollup.latestConfirmed()) {
+            ++nRejectedNodes;
+            rollup.setFirstUnresolvedNode(++n);
+        }
     }
 
     function execute(uint256 seed) external {

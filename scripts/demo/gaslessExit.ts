@@ -3,7 +3,7 @@
  * The seller holds NO ETH on Arbitrum Sepolia: it withdraws on Xai straight to the ExitIntentRouter, signs
  * one EIP-712 SellOrder, and a relayer settles it, paying the parent-chain gas and earning the relayer fee.
  *
- *   node scripts/demo/gaslessExit.ts setup <usdg>     create seller/relayer test keys, fund them, configure web/.env.local
+ *   node scripts/demo/gaslessExit.ts setup <usdg>     create seller/relayer test keys (relayer in web/.env.local) and fund them
  *   node scripts/demo/gaslessExit.ts start <usdg>     seller withdraws on Xai to the router and signs the order
  *   node scripts/demo/gaslessExit.ts relay [appUrl]   POST the intent to the app until settled (default http://localhost:3000)
  */
@@ -47,7 +47,7 @@ const withdrawalInitiated = parseAbi([
 
 function deployment(): { router: Address; vault: Address } {
   const d = JSON.parse(readFileSync("deployments/arbitrumSepolia.json", "utf8")) as { router?: Address; vault: Address };
-  if (!d.router) throw new Error("Router not deployed: run scripts/deployRouter.ts first");
+  if (!d.router) throw new Error("Router not deployed: run scripts/deploy.ts first");
   return { router: getAddress(d.router), vault: getAddress(d.vault) };
 }
 
@@ -61,17 +61,10 @@ function ensureKey(file: string, name: string): Hex {
   return key;
 }
 
-function ensureEnvLine(file: string, name: string, value: string) {
-  const text = existsSync(file) ? readFileSync(file, "utf8") : "";
-  if (new RegExp(`^${name}=`, "m").test(text)) return;
-  appendFileSync(file, `${text.endsWith("\n") || text === "" ? "" : "\n"}${name}=${value}\n`);
-}
-
 async function setup(amount: bigint) {
   const { router } = deployment();
   const seller = privateKeyToAccount(ensureKey(".env", "SELLER_PRIVATE_KEY"));
   const relayer = privateKeyToAccount(ensureKey(WEB_ENV, "RELAYER_PRIVATE_KEY"));
-  ensureEnvLine(WEB_ENV, "NEXT_PUBLIC_EXIT_INTENT_ROUTER", router);
   console.log(`seller  ${seller.address}\nrelayer ${relayer.address}\nrouter  ${router}`);
 
   // Idempotent and sequential (one pending tx per account at a time): tops up only what is missing.

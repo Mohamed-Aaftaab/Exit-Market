@@ -27,7 +27,7 @@ import {ExitLeaf} from "./libraries/ExitLeaf.sol";
 /// @dev Trust model: the owner chooses which gateways and which root verifier to trust, and sets a fee
 ///      capped at MAX_FEE_BPS (snapshotted per listing). Child gateway, outbox and rollup are derived from
 ///      the gateway itself and, with the verifier, frozen on first allow. An owner who allowed a hostile
-///      gateway could fake exits and drain buyers, so the deployment (scripts/deployV3.ts) allows the real
+///      gateway could fake exits and drain buyers, so the deployment (scripts/deploy.ts) allows the real
 ///      Arbitrum gateways and then RENOUNCES ownership in the same script: the live market has no owner, and
 ///      nobody can add a gateway, change the fee or disallow a gateway after that (round 5, H-2).
 ///      Payout safety: an Outbox spent bit is keyed by index only, so tokens are released only when the
@@ -320,7 +320,8 @@ contract ExitMarket is IExitMarket, ITradeableExitReceiver, Ownable2Step, Reentr
         // seller and runs arbitrary code in buyExit, so the price must never be a balance change measured around
         // that call: another listing's Outbox payout landing mid-call would otherwise be paid out as this
         // seller's price (round 5, H-1).
-        uint256 price = IExitBuyer(buyer).buyExit(exit);
+        (bytes4 magic, uint256 price) = IExitBuyer(buyer).buyExit(exit);
+        if (magic != IExitBuyer.buyExit.selector) revert NotExitBuyer(buyer);
         if (price == 0) revert ZeroPrice();
         uint256 fee = (price * feeBps) / BPS;
         // The seller's slippage bound is on what the seller receives, after the fee.

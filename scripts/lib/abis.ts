@@ -155,6 +155,17 @@ export const exitMarketAbi = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "buyer",
+        "type": "address"
+      }
+    ],
+    "name": "NotExitBuyer",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "bytes32",
         "name": "id",
         "type": "bytes32"
@@ -545,7 +556,7 @@ export const exitMarketAbi = [
         "type": "uint16"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "feeRecipient",
         "type": "address"
@@ -2407,6 +2418,11 @@ export const exitVaultAbi = [
     "name": "buyExit",
     "outputs": [
       {
+        "internalType": "bytes4",
+        "name": "magic",
+        "type": "bytes4"
+      },
+      {
         "internalType": "uint256",
         "name": "price",
         "type": "uint256"
@@ -4211,6 +4227,32 @@ export const exitIntentRouterAbi = [
 ] as const;
 
 export const legacyRootVerifierAbi = [
+  {
+    "inputs": [],
+    "name": "MAX_PENDING_DEPTH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_SAME_BLOCK_SCAN",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
   {
     "inputs": [
       {

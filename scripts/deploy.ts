@@ -5,15 +5,16 @@ import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "./lib/networks.ts";
 
 /**
  * Deploys Exit Market on Arbitrum Sepolia for Xai Testnet exits:
- *   ExitMarket  -> allow Xai's standard and custom gateways with the legacy root verifier -> renounce ownership
+ *   LegacyRootVerifier (v4: refuses pending roots whose node chain has a rival)
+ *   ExitMarket  -> allow Xai's standard and custom gateways with that verifier -> renounce ownership
  *   ExitVault   (USDG, ERC-4626; its owner can only tune pricing within hard caps)
  *   ExitIntentRouter bound to that market and vault (no owner)
- * The root verifiers hold no funds and have no owner, so already-deployed ones are reused when recorded.
+ * The BOLD verifier holds no funds, has no owner and is unchanged since v2, so a recorded one is reused.
  * Previous deployments are kept under `history` in the deployment file.
  *   npx hardhat run scripts/deploy.ts --network arbitrumSepolia
  */
 const DEPLOYMENT_FILE = "deployments/arbitrumSepolia.json";
-const VERSION = "v3";
+const VERSION = "v4";
 const MARKET_FEE_BPS = 25; // 0.25%
 const GATEWAYS = [XAI_TESTNET.tokenBridge.parentErc20Gateway, XAI_TESTNET.tokenBridge.parentCustomGateway];
 
@@ -32,13 +33,12 @@ async function main() {
   const deployBlock = await publicClient.getBlockNumber();
   console.log(`Deployer ${owner}, starting at block ${deployBlock}`);
 
-  const reuse = async (key: string, contract: "LegacyRootVerifier" | "BoldRootVerifier"): Promise<Address> => {
-    const recorded = typeof current[key] === "string" ? getAddress(current[key] as string) : undefined;
-    if (recorded && (await publicClient.getCode({ address: recorded }))) return recorded;
-    return (await viem.deployContract(contract)).address;
-  };
-  const verifier = await reuse("verifier", "LegacyRootVerifier");
-  const boldVerifier = await reuse("boldVerifier", "BoldRootVerifier");
+  const recordedBold = typeof current.boldVerifier === "string" ? getAddress(current.boldVerifier) : undefined;
+  const boldVerifier =
+    recordedBold && (await publicClient.getCode({ address: recordedBold }))
+      ? recordedBold
+      : (await viem.deployContract("BoldRootVerifier")).address;
+  const verifier = (await viem.deployContract("LegacyRootVerifier")).address;
   console.log("LegacyRootVerifier:", verifier, "BoldRootVerifier:", boldVerifier);
 
   const market = await viem.deployContract("ExitMarket", [ARBITRUM_SEPOLIA.usdg, owner, MARKET_FEE_BPS, owner]);

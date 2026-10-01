@@ -62,16 +62,75 @@ contract MockOutbox {
 }
 
 /// @dev Minimal pre-BOLD rollup: stores nodes and exposes the outbox. Rejected nodes are NOT deleted
-///      (RollupCore._rejectNextNode only bumps _firstUnresolvedNode).
+///      (RollupCore._rejectNextNode only bumps _firstUnresolvedNode). Creating a node links it to its parent the
+///      way RollupCore does (NodeLib.childCreated): prevNum and createdAtBlock on the child, firstChildBlock
+///      (first child only) and latestChildNumber on the parent.
 contract MockLegacyRollup {
     address public outbox;
     uint64 public latestConfirmed;
     uint64 public firstUnresolvedNode = 1;
     uint64 public latestNodeCreated;
     mapping(uint64 => LegacyNode) private _nodes;
+    mapping(uint64 => bool) private _exists;
+    uint64[] private _created;
 
     constructor(address outbox_) {
         outbox = outbox_;
+    }
+
+    /// @notice Like RollupCore: the next node number, as a child of `prevNum`.
+    function createNode(uint64 prevNum, bytes32 confirmData, uint64 deadlineBlock) external returns (uint64 nodeNum) {
+        nodeNum = latestNodeCreated + 1;
+        _link(nodeNum, prevNum);
+        _nodes[nodeNum].confirmData = confirmData;
+        _nodes[nodeNum].deadlineBlock = deadlineBlock;
+    }
+
+    /// @notice Test convenience: create `nodeNum` (numbers may be sparse) on the honest chain, i.e. as a child of
+    ///         the highest existing node below it that still leads to the latest confirmed node without passing a
+    ///         rejected one, else of the latest confirmed node.
+    ///         Re-publishing an existing node only updates its commitment.
+    function publishNodeAt(uint64 nodeNum, bytes32 confirmData, uint64 deadlineBlock) external {
+        if (!_exists[nodeNum]) _link(nodeNum, _honestParentBelow(nodeNum));
+        _nodes[nodeNum].confirmData = confirmData;
+        _nodes[nodeNum].deadlineBlock = deadlineBlock;
+    }
+
+    /// @notice Test convenience: create `nodeNum` as a child of `prevNum` (e.g. a rival of an existing child).
+    function publishChildAt(uint64 nodeNum, uint64 prevNum, bytes32 confirmData, uint64 deadlineBlock) external {
+        require(!_exists[nodeNum], "NODE_EXISTS");
+        _link(nodeNum, prevNum);
+        _nodes[nodeNum].confirmData = confirmData;
+        _nodes[nodeNum].deadlineBlock = deadlineBlock;
+    }
+
+    function _link(uint64 nodeNum, uint64 prevNum) private {
+        require(prevNum < nodeNum, "PARENT_NOT_OLDER");
+        LegacyNode storage parent = _nodes[prevNum];
+        if (parent.firstChildBlock == 0) parent.firstChildBlock = uint64(block.number);
+        if (nodeNum > parent.latestChildNumber) parent.latestChildNumber = nodeNum;
+        _nodes[nodeNum].prevNum = prevNum;
+        _nodes[nodeNum].createdAtBlock = uint64(block.number);
+        _exists[nodeNum] = true;
+        _created.push(nodeNum);
+        if (nodeNum > latestNodeCreated) latestNodeCreated = nodeNum;
+    }
+
+    function _honestParentBelow(uint64 nodeNum) private view returns (uint64 best) {
+        best = latestConfirmed;
+        for (uint256 i = 0; i < _created.length; ++i) {
+            uint64 n = _created[i];
+            if (n < nodeNum && n > best && _isHonest(n)) best = n;
+        }
+    }
+
+    /// @dev Unresolved, and its ancestors lead to the latest confirmed node through unresolved nodes only.
+    function _isHonest(uint64 n) private view returns (bool) {
+        while (n > latestConfirmed) {
+            if (n < firstUnresolvedNode) return false; // rejected
+            n = _nodes[n].prevNum;
+        }
+        return n == latestConfirmed;
     }
 
     function setNodeConfirmData(uint64 nodeNum, bytes32 confirmData) external {

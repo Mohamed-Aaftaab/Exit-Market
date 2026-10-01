@@ -13,6 +13,7 @@ contract TestBuyer is IExitBuyer {
     address public reenterTarget;
     bytes public reenterData;
     bool public swallowReentryFailure;
+    bytes4 public magicOverride; // 0 = the correct IExitBuyer.buyExit.selector
 
     bool public reentered;
     bool public reentryBlocked;
@@ -28,13 +29,17 @@ contract TestBuyer is IExitBuyer {
         claimed = claimed_;
     }
 
+    function setMagic(bytes4 magic_) external {
+        magicOverride = magic_;
+    }
+
     function setReentry(address target, bytes calldata data, bool swallow) external {
         reenterTarget = target;
         reenterData = data;
         swallowReentryFailure = swallow;
     }
 
-    function buyExit(ExitRecord calldata exit) external returns (uint256) {
+    function buyExit(ExitRecord calldata exit) external returns (bytes4, uint256) {
         lastAmount = exit.amount;
         if (reenterData.length > 0) {
             reentered = true;
@@ -50,6 +55,7 @@ contract TestBuyer is IExitBuyer {
             }
         }
         token.approve(msg.sender, pay);
-        return claimed == 0 ? pay : claimed;
+        bytes4 magic = magicOverride == bytes4(0) ? IExitBuyer.buyExit.selector : magicOverride;
+        return (magic, claimed == 0 ? pay : claimed);
     }
 }

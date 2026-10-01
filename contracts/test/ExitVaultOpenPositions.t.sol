@@ -263,6 +263,8 @@ contract ExitVaultOpenPositionsTest is ExitFixture {
         Withdrawal[] memory ws = _buyOnOwnNodes(max, NODE, 1);
         Withdrawal memory extra = _createOn(gateway, NODE + 100, 1_000, 2, seller, AMOUNT)[1]; // index 1: index 0 is spent by _collect
         rollup.setFirstUnresolvedNode(NODE + 1); // only ws[0]'s node is rejected
+        // Every pending node after NODE was built on it and is now doomed, so the extra exit sells as confirmed.
+        _confirm(extra);
         vm.expectRevert(abi.encodeWithSelector(IExitVault.TooManyOpenPositions.selector, max));
         _sellTo(extra, seller, address(vault), 0);
 

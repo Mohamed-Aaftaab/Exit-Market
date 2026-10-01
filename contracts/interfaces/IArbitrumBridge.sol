@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.28;
 
 /// @notice Parent-chain side of an Arbitrum token gateway (L1ArbitrumExtendedGateway).
 /// @dev Every standard, custom, WETH and USDC gateway (incl. Orbit variants) inherits this.

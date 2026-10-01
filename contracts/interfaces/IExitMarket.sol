@@ -52,10 +52,13 @@ struct PayoutProof {
 ///         pulls with transferFrom.
 interface IExitBuyer {
     /// @param exit verified exit being sold; ownership is redirected to the buyer right after this call
+    /// @return magic must be IExitBuyer.buyExit.selector: the buyer's explicit consent to this purchase. The seller
+    ///         names the buyer, so without it an address that merely approved the market (for example a wallet
+    ///         whose fallback returns data) could be charged for an exit it never agreed to buy.
     /// @return price payment-token amount the market pulls from the buyer (exactly this; the sale reverts if the
     ///         pull fails). Pulling, not measuring the market's balance, means no other token inflow during this
     ///         call can be counted as the price (round 5, H-1).
-    function buyExit(ExitRecord calldata exit) external returns (uint256 price);
+    function buyExit(ExitRecord calldata exit) external returns (bytes4 magic, uint256 price);
 }
 
 interface IExitMarket {
@@ -97,7 +100,7 @@ interface IExitMarket {
 
     event GatewayAllowed(address indexed gateway, address childGateway, address outbox, address rollup, address verifier);
     event GatewayDisallowed(address indexed gateway);
-    event FeeUpdated(uint16 feeBps, address feeRecipient);
+    event FeeUpdated(uint16 feeBps, address indexed feeRecipient);
     event FeesWithdrawn(address indexed recipient, uint256 amount);
     /// @notice Full verified record, emitted for every exit the market accepts (indexers/keepers need it).
     event ExitVerified(bytes32 indexed id, ExitRecord exit);
@@ -128,6 +131,8 @@ interface IExitMarket {
     /// @param payout what the seller would receive (price minus the market fee)
     error PayoutBelowMin(uint256 payout, uint256 minPayout);
     error ZeroPrice();
+    /// @notice The named buyer did not return IExitBuyer.buyExit.selector, so it never consented to buy.
+    error NotExitBuyer(address buyer);
     /// @notice The buyer's payment arrived short (fee-on-transfer or rebasing payment token): fail closed.
     error PaymentShortfall(uint256 received, uint256 price);
     error NotSeller();

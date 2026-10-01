@@ -153,10 +153,16 @@ abstract contract ExitFixture is Test {
         }
     }
 
+    /// @dev Publishes `root` as unresolved node `nodeNum` on the honest chain (see MockLegacyRollup.publishNodeAt).
     function _publishPending(bytes32 root, uint64 nodeNum) internal {
-        rollup.setNodeConfirmData(nodeNum, keccak256(abi.encodePacked(BLOCK_HASH, root)));
-        rollup.setNodeDeadline(nodeNum, uint64(block.number) + CONFIRM_BLOCKS);
-        if (nodeNum > rollup.latestNodeCreated()) rollup.setLatestNodeCreated(nodeNum);
+        rollup.publishNodeAt(nodeNum, keccak256(abi.encodePacked(BLOCK_HASH, root)), uint64(block.number) + CONFIRM_BLOCKS);
+    }
+
+    /// @dev Publishes `root` as unresolved node `nodeNum` under an explicit parent, e.g. a rival sibling.
+    function _publishChild(bytes32 root, uint64 nodeNum, uint64 parent) internal {
+        rollup.publishChildAt(
+            nodeNum, parent, keccak256(abi.encodePacked(BLOCK_HASH, root)), uint64(block.number) + CONFIRM_BLOCKS
+        );
     }
 
     /// @dev Pairwise keccak like MerkleLib; leaves are keccak(item); padded with zero hashes to a power of two.

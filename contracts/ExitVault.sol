@@ -106,7 +106,12 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
     // ---------------------------------------------------------------- exit buying
 
     /// @inheritdoc IExitBuyer
-    function buyExit(ExitRecord calldata exit) external onlyMarket nonReentrant returns (uint256 price) {
+    function buyExit(ExitRecord calldata exit)
+        external
+        onlyMarket
+        nonReentrant
+        returns (bytes4 magic, uint256 price)
+    {
         if (exit.l1Token != asset()) revert WrongToken(exit.l1Token);
         if (exit.pending && !acceptPending) revert PendingNotAccepted();
         // Dust exits would fill the MAX_OPEN_POSITIONS slots for almost nothing (round 5, M-1).
@@ -140,6 +145,7 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
         // The market pulls exactly `price` right after this call (IExitBuyer).
         IERC20(asset()).forceApprove(address(market), price);
         emit ExitPurchased(key, exit.amount, price);
+        magic = IExitBuyer.buyExit.selector;
     }
 
     /// @inheritdoc IExitVault
@@ -147,7 +153,7 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
         (bytes32 key, Position storage p) = _requirePurchased(exit);
         if (!market.isExitPaidOut(exit, payout)) revert ExitNotPaidOut(key);
 
-        uint256 released;
+        uint256 released = 0; // a written-off exit's cost already left the NAV
         if (!p.writtenOff) {
             released = p.cost;
             _removeOpen(p.openIndex);
@@ -322,10 +328,20 @@ contract ExitVault is ERC4626, Ownable2Step, ReentrancyGuard, IExitVault {
     ///      legacy verifier whose rollup was upgraded), the exit stays valued as before this check existed
     ///      instead of bricking every deposit and redemption; writeOff/collect do not depend on it.
     function _isRejected(Position storage p) private view returns (bool rejected) {
-        ExitRecord memory probe;
-        probe.gateway = p.gateway;
-        probe.sendRoot = p.sendRoot;
-        probe.nodeNum = p.nodeNum;
+        ExitRecord memory probe = ExitRecord({
+            gateway: p.gateway,
+            exitNum: 0,
+            initialDestination: address(0),
+            l1Token: address(0),
+            amount: 0,
+            index: 0,
+            itemHash: bytes32(0),
+            sendRoot: p.sendRoot,
+            nodeNum: p.nodeNum,
+            blockHash: bytes32(0),
+            pending: false,
+            deadlineBlock: 0
+        });
         try market.isExitRejected(probe) returns (bool r) {
             rejected = r;
         } catch {}
