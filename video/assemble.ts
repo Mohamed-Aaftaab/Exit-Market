@@ -42,6 +42,8 @@ const TIMELINE: Block[] = [
     files: [{ file: "capture/withdraw.mp4", from: 3.5, to: 14.5 }, { file: "cards/skip.png" }, { file: "capture/sell.mp4", from: 3.0, to: 22 }] } },
   { id: "gasless", voice: ["06-gasless"], lead: 0.4, visual: { kind: "clips", tag: true,
     files: [{ file: "capture/gasless-start.mp4", from: 5.0 }, { file: "capture/gasless-settled.mp4", from: 4.0 }] } },
+  { id: "listing", voice: ["06b-listing"], lead: 0.4, visual: { kind: "clips", tag: true,
+    files: [{ file: "capture/list.mp4", from: 3.0, to: 21 }, { file: "capture/buy-listing.mp4", from: 6.0, to: 21 }] } },
   { id: "vault", voice: ["07-vault"], lead: 0.4, visual: { kind: "shot", dir: "shot4_vault", minSeconds: 12.5 } },
   { id: "explorer", voice: ["08-explorer"], lead: 0.3, visual: { kind: "clips", tag: true, files: [{ file: "capture/explorer.mp4", from: -17.5, to: -5 }] } },
   { id: "depth", voice: ["09-depth"], lead: 0.4, visual: { kind: "cards", files: ["bold", "stylus", "quality"] } },

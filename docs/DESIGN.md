@@ -1,6 +1,6 @@
 # Exit Market — Design
 
-Current state: **v3** (after the round-5 review). Every review round, finding and residual risk is in
+Current state: **v4** (rival-node check and buyer consent, after round 6). Every review round, finding and residual risk is in
 [`SECURITY.md`](SECURITY.md).
 
 ## Problem
@@ -32,7 +32,13 @@ executed** (source comment: "It is assumed the `_exitNum` is validated off-chain
 3. **Root authenticity** (`IRootVerifier`, one per gateway, frozen): confirmed in `Outbox.roots`, or pending:
    - **legacy rollups** (`LegacyRootVerifier`): an unresolved node (`firstUnresolvedNode ≤ n ≤ latestNodeCreated`)
      with `getNode(n).confirmData == keccak256(blockHash, sendRoot)`; rejected legacy nodes are not deleted, hence
-     the range check, repeated at buy time;
+     the range check, repeated at buy time. Since v4 the whole pending chain must also be **uncontested**: walking
+     `prevNum` from `n` to `latestConfirmed`, every parent must be unresolved (or the latest confirmed node) and
+     have no live rival child. RollupCore records each parent's `latestChildNumber` and `firstChildBlock`, and
+     nodes are numbered in creation order, so a newer sibling shows in `latestChildNumber`, an older one from an
+     earlier block in `firstChildBlock`, and an older one from the same block in the contiguous run of nodes
+     created in that block (scanned, at most 16). A resolved sibling of a node on a pending chain can only have
+     been rejected. Anything that cannot be ruled out fails closed: the exit then sells once confirmed;
    - **BOLD** (`BoldRootVerifier`): assertion preimages registered once (permissionless), and a pending root is
      accepted only if every pending ancestor up to the latest confirmed assertion is registered and has no rival.
 4. **Not yet executed**: `!Outbox.isSpent(index)`. After the redirect, any later execution of this item pays a
@@ -45,12 +51,12 @@ and frozen with the verifier when the gateway is allowed.
 
 | Piece | Role |
 |---|---|
-| `ExitMarket` | the hook; listings (`list`/`buy`/`cancel`/`settle`) and one-transaction sale to any `IExitBuyer`. Payment is **pulled** from the buyer (`transferFrom` of the price it reports), never measured as a balance change; the seller's `minPayout` is net of the fee. On the live deployment ownership is renounced |
+| `ExitMarket` | the hook; listings (`list`/`buy`/`cancel`/`settle`) and one-transaction sale to any `IExitBuyer`. Payment is **pulled** from the buyer (`transferFrom` of the price it reports), never measured as a balance change, and only after the buyer returns `IExitBuyer.buyExit.selector` (its consent); the seller's `minPayout` is net of the fee. On the live deployment ownership is renounced |
 | `ExitVault` | ERC-4626 USDG vault and the default buyer: prices an exit at `face − baseFee − APR × timeToDeadline`, carries it at cost plus linearly accrued discount, values it at zero if its node is rejected, collects face value after execution. At most 32 open exits; exits below `minExitAmount` refused |
 | `ExitIntentRouter` | gasless exits: users withdraw to the router, sign an EIP-712 `SellOrder` (buyer, minimum proceeds, relayer fee, deadline); anyone settles it. `reclaim` and `recoverExecuted` return an exit or its tokens to the proven sender |
-| `scripts/keeper.ts` | permissionless: executes confirmed exits through the Outbox, collects them into the vault, writes off rejected ones |
-| `web/` | desk (sell, gasless, LP deposit/withdraw), live Explorer, relayer API (`/api/relay`) |
-| `scripts/lib/` | the TypeScript both share: proof builder (earliest pending node covering the withdrawal), hook encoding, relayer, ABIs generated from the compiled contracts |
+| `scripts/keeper.ts` | permissionless: executes every exit the market verified once its root confirms (the Outbox pays its owner), collects the vault's, settles listings that paid out while listed, writes off rejected ones. Reads confirmed roots from the Outbox's `SendRootUpdated`, so it is the same for legacy and BOLD |
+| `web/` | desk (instant sale, gasless, listings: list/buy/cancel, LP deposit/withdraw, test funds), live Explorer, relayer API (`/api/relay`), test faucet (`/api/faucet`), security headers |
+| `scripts/lib/` | the TypeScript both share: proof builders for legacy nodes and BOLD assertions (a covering confirmed root first, else the earliest pending one the verifier accepts), hook encoding, listings, relayer, ABIs generated from the compiled contracts |
 
 ## Flows
 
@@ -73,6 +79,7 @@ and frozen with the verifier when the gateway is allowed.
   inside hard caps only.
 - Buyer risk: a pending node being rejected. The vault prices time to confirmation, values rejected exits at
   zero immediately and keeps the record so a genuine exit re-committed by the honest node can still be collected.
+  A disputed node (a rival at any pending level) stops trading at once: no sale, no listing purchase.
 
 ## History
 
@@ -82,6 +89,8 @@ and frozen with the verifier when the gateway is allowed.
   balance-delta fix (R4-C1).
 - **v3 (2026-10-01)**: market pulls payment (R5-H1), ownership renounced at deployment (R5-H2), vault
   `minExitAmount` (R5-M1), `minPayout` net of fee (R5-M2).
+- **v4 (2026-10-01)**: legacy verifier refuses a contested pending chain; buyers consent with a magic value;
+  listings in the app, a keeper that completes every verified exit, BOLD proofs in the TypeScript library.
 
 ## Deployment (hackathon)
 

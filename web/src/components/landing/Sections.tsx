@@ -17,8 +17,8 @@ const STACK = [
 const STEPS = [
   ["Withdraw", "Start a standard bridge withdrawal on the child chain. Nothing special, nothing extra to trust."],
   ["Prove", "About 15 minutes later the next rollup node posts. Exit Market rebuilds your withdrawal and proves it sits in that node's send root."],
-  ["Sell", "The vault pays you now and becomes the owner of the exit, inside the gateway's own hook, in one transaction."],
-  ["Collect", "When the challenge period ends a permissionless keeper executes the exit and the vault collects face value."],
+  ["Sell", "Sell to the vault now, or list it at your price for any wallet to buy. Either way it is one transaction, inside the gateway's own hook."],
+  ["Collect", "When the challenge period ends a permissionless keeper executes the exit, and its owner, the vault or a buyer, is paid face value."],
 ] as const;
 
 const FEATURES = [
@@ -26,7 +26,7 @@ const FEATURES = [
     kicker: "On-chain",
     title: "Proof, not trust",
     body: "Every check runs inside the seller's transaction, against Arbitrum's own contracts. No oracle, no committee, and the market has no owner.",
-    rows: [["Ownership", "getExternalCall"], ["Withdrawal", "leaf + Merkle path"], ["Root", "pending node / BOLD"], ["Unclaimed", "!Outbox.isSpent"]],
+    rows: [["Ownership", "getExternalCall"], ["Withdrawal", "leaf + Merkle path"], ["Root", "pending, no rival node"], ["Unclaimed", "!Outbox.isSpent"]],
   },
   {
     kicker: "Gasless",
@@ -44,9 +44,9 @@ const FEATURES = [
 ] as const;
 
 const NUMBERS = [
-  ["137", "pending BOLD assertions walked for a real Arbitrum One exit (mainnet fork)"],
-  ["1.1M", "gas for that whole ancestor walk, measured on a mainnet fork"],
-  ["422", "tests: unit, fuzz, invariants, exploit regressions, mainnet forks"],
+  ["134", "pending BOLD assertions walked for a real Arbitrum One exit (mainnet fork)"],
+  ["1.3M", "gas for that whole ancestor walk, measured on a mainnet fork"],
+  ["450", "tests: unit, fuzz, invariants, exploit regressions, mainnet forks"],
   ["99.4%", "line coverage of the production contracts"],
 ] as const;
 
@@ -229,7 +229,7 @@ function Depth() {
         <Head
           eyebrow="Beyond the demo"
           title="Proven against mainnet"
-          lead="Arbitrum One runs BOLD, so the verifier walks real pending assertions. Five internal review rounds; every high-severity finding reproduced, fixed and covered by a regression test. Not a third-party audit."
+          lead="Arbitrum One runs BOLD, so the verifier walks real pending assertions; on Xai the legacy verifier refuses any node with a rival. Six internal review rounds; every high-severity finding reproduced, fixed and covered by a regression test. Not a third-party audit."
         />
         <div className={styles.numbers}>
           {NUMBERS.map(([value, label], i) => (

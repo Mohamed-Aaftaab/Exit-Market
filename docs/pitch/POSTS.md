@@ -35,14 +35,14 @@ So no contract could safely buy one.
 
 **4**
 ```
-Exit Market is the missing check. Before the 6.4 days end, it rebuilds your withdrawal leaf, folds the Merkle proof and matches the root to a pending rollup node or BOLD assertion.
+Exit Market is the missing check. Before the 6.4 days end, it rebuilds your withdrawal leaf, folds the Merkle proof and matches the root to a pending rollup node or BOLD assertion that no validator disputes.
 
 Token, amount, destination and "not yet claimed" are all verified on-chain, in the same tx.
 ```
 
 **5**
 ```
-Then you sell it with one signature. An ERC-4626 vault (or any buyer) pays you now and becomes the owner of the withdrawal. It collects the full amount when the challenge period ends.
+Then you sell it with one signature: an ERC-4626 vault pays you now, or you list it at your price and any wallet can buy it. The new owner collects the full amount when the challenge period ends.
 
 No gas on the parent chain? Withdraw to our router, sign once, and a relayer settles.
 ```
@@ -50,11 +50,12 @@ No gas on the parent chain? Withdraw to our router, sign once, and a relayer set
 **6**
 ```
 Live on Arbitrum Sepolia with Xai Testnet (Orbit L3):
-• exits sold in one signature while still pending
+• an exit sold in one signature while still pending
 • a gasless exit from a wallet with 0 ETH
-• the keeper executed, the vault realized yield
+• an exit listed at the seller's price and bought by another wallet
+• the keeper executed all three; the vault and the buyer were paid
 
-Txs: https://sepolia.arbiscan.io/tx/0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782 · https://sepolia.arbiscan.io/tx/0x1bc30a32312d2d1534233aa12fed7ae6e134fea619302138a3d3fd773743a57a · https://sepolia.arbiscan.io/tx/0x7d817f5894c4a831c62e65c580c9a114107d9f5b3a5fc034191eb4745baf91f3
+Txs: https://sepolia.arbiscan.io/tx/0xa6eb8d37170fa78f4d386a30a27f8779c08f2a90c9ffa53d138b53f6cce3bf55 · https://sepolia.arbiscan.io/tx/0xdcabb327855c2c00a6dad593f0cd7dd3af7a629ab1bd17f6708625b29d472f57 · https://sepolia.arbiscan.io/tx/0x6ff67081cdb80666962905f0414ffcdb4902df940b2e6ac54ec35c5bbcd77031
 ```
 
 **7**
@@ -80,7 +81,7 @@ Exit Market: sell an in-flight Arbitrum withdrawal instead of waiting 6.4 days
 
 Arbitrum's token gateways have transferExitAndCall, which lets the owner of a pending withdrawal hand it to another address. Nothing validated the exit, so nobody could safely buy one. Exit Market validates it on-chain (a Merkle proof against the rollup's pending root, legacy or BOLD) and lets you sell it to a buyer or an ERC-4626 vault at a small discount.
 
-Live on Arbitrum Sepolia + Xai Testnet: real sales, a gasless exit from a wallet with 0 ETH, a keeper that executes and collects. Also a Stylus (Rust) verifier, and a BOLD verifier proven on an Arbitrum One mainnet fork.
+Live on Arbitrum Sepolia + Xai Testnet: real sales, a listing bought by another wallet, a gasless exit from a wallet with 0 ETH, a keeper that executes and collects. The desk has a test-funds button, so an empty wallet can try it. Also a Stylus (Rust) verifier, and a BOLD verifier proven on an Arbitrum One mainnet fork.
 
 Feedback wanted: which chain and token would you sell first on mainnet?
 
@@ -90,5 +91,5 @@ Demo: [video] | App: https://exit-market-gamma.vercel.app | Code: https://github
 ## HackQuest submission summary (≤120 words)
 
 ```
-Exit Market lets anyone sell an in-flight Arbitrum withdrawal instead of waiting out the 6.4-day challenge period. Arbitrum's token gateways have included transferExitAndCall, a hook to hand off a pending exit, for years, but nothing verified the exit, so nobody could safely buy one. Exit Market proves the token, amount and destination on-chain against the rollup's pending root (legacy and BOLD rollups), then sells the exit instantly to a buyer or an ERC-4626 vault. It also has gasless sign-once exits, a permissionless keeper and a Stylus verifier. Live on Arbitrum Sepolia with Xai Testnet: real exits sold, a gasless exit from a wallet holding zero ETH, and vault yield realized.
+Exit Market lets anyone sell an in-flight Arbitrum withdrawal instead of waiting out the 6.4-day challenge period. Arbitrum's token gateways have included transferExitAndCall, a hook to hand off a pending exit, for years, but nothing verified the exit, so nobody could safely buy one. Exit Market proves the token, amount and destination on-chain against the rollup's pending root (legacy and BOLD rollups), then sells it to an ERC-4626 vault or lists it for any buyer. Gasless sign-once exits, a permissionless keeper, a Stylus verifier. Live on Arbitrum Sepolia with Xai Testnet: exits sold, listed and bought, gasless from a zero-ETH wallet, all settled.
 ```

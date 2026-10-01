@@ -1,8 +1,8 @@
 # Test coverage and invariant evidence
 
-Date: 2026-10-01 (v3 contracts, after the round-5 fixes). Hardhat 3.18.0, solc 0.8.28 (viaIR, optimizer 200 runs), forge-std 1.10.0, EDR `cancun`.
-Result: **413 passing, 0 failing, 9 skipped** (the 9 skipped are the mainnet-fork tests, which need
-`FORK_TESTS=1` and network access; with it set, all 422 pass).
+Date: 2026-10-01 (v4 contracts, after round 6). Hardhat 3.18.0, solc 0.8.28 (viaIR, optimizer 200 runs), forge-std 1.10.0, EDR `cancun`.
+Result: **440 passing, 0 failing, 10 skipped** (the 10 skipped are the fork tests against Arbitrum One mainnet
+and the live Xai rollup, which need `FORK_TESTS=1` and network access; with it set, all 450 pass).
 
 ## Reproduce
 
@@ -31,17 +31,17 @@ branch coverage:
 
 ## Production contracts
 
-| Contract | Lines, unit + fuzz suites (v2, 2026-09-30) | Lines, full suite (v3, 2026-10-01) | Functions hit (derived, v2) | Custom-error reverts named by a test (v2) |
+| Contract | Lines, full suite (v4, 2026-10-01) | Lines, full suite (v3) | Functions hit (derived, v2) | Custom-error reverts named by a test (v2) |
 |---|---|---|---|---|
-| `ExitMarket.sol` | 174/178 (97.75%) | 177/180 (98.33%) | 26/26 | 18/20 |
+| `ExitMarket.sol` | 178/181 (98.34%) | 177/180 (98.33%) | 26/26 | 18/20 |
 | `ExitIntentRouter.sol` | 86/86 (100%) | 86/86 (100%) | 10/10 | 14/14 |
-| `ExitVault.sol` | 131/131 (100%) | 137/137 (100%) | 27/27 | 16/16 |
+| `ExitVault.sol` | 148/148 (100%) | 137/137 (100%) | 27/27 | 16/16 |
 | `verifiers/BoldRootVerifier.sol` | 48/48 (100%) | 48/48 (100%) | 6/6 | 6/6 |
-| `verifiers/LegacyRootVerifier.sol` | 7/7 (100%) | 7/7 (100%) | 2/2 | 0/0 |
+| `verifiers/LegacyRootVerifier.sol` | 28/28 (100%; also 100% from its own test file alone) | 7/7 (100%) | 4/4 | 0/0 |
 | `libraries/ExitLeaf.sol` | 20/20 (100%) | 20/20 (100%) | 4/4 | 2/2 |
 | `libraries/ExitAccrual.sol` | 4/4 (100%) | 4/4 (100%) | 1/1 | 0/0 |
 | `libraries/ExitKeys.sol` | 1/1 (100%) | 1/1 (100%) | 1/1 | 0/0 |
-| **Production total** | **471/475 (99.16%)** | **480/483 (99.38%)** | **77/77** | **56/58** |
+| **Production total** | **513/516 (99.42%)** | **480/483 (99.38%)** | **79/79** | **56/58** |
 
 Not counted above: `contracts/bench/ExitLeafBench.sol` (0%, a benchmark twin deployed only on Arbitrum Sepolia by
 `scripts/stylus/bench.ts`, no unit test) and the test scaffolding (mocks, fixtures, handlers).
@@ -54,7 +54,7 @@ are exactly the two custom errors no test names:
 | Line | Statement | Why unreachable |
 |---|---|---|
 | 242 | `if (owner_ != address(this)) revert ExitNotHeld();` in `_verifyExit` | The hook runs after the gateway redirected the exit to the market; only a hostile allowlisted gateway could call it otherwise |
-| 364 | same check in `_requireLive` | A listed exit is owned by the market by construction |
+| 365 | same check in `_requireLive` | A listed exit is owned by the market by construction |
 | 301 | `if (_listings[id].status == Status.Listed) revert ListingExists(id);` in `_list` | While Listed the market owns the exit, so the gateway refuses a second redirect (`hostileRelistWhileListed` in the market invariant campaign asserts exactly that) |
 
 One further line, `if (price == 0) revert ZeroPrice();` in `_sellToBuyer`, is not reached by the unit suites but is
@@ -147,11 +147,16 @@ invariant file was run with the committed campaign sizes. **All 17 mutants were 
 
 | Kind | Count |
 |---|---:|
-| Unit / scenario tests | 379 |
-| Property fuzz tests (`testFuzz_*`, 256 runs each unless stated) | 17 |
+| Unit / scenario tests | 405 |
+| Property fuzz tests (`testFuzz_*`, 256 runs each unless stated) | 18 |
 | Invariant campaigns (7 market + 5 router + 5 vault) | 17 |
-| **Total passing** | **413** |
-| Skipped (mainnet fork, `FORK_TESTS` unset) | 9 |
+| **Total passing** | **440** |
+| Skipped (fork tests, `FORK_TESTS` unset) | 10 |
+
+v4 added 27: 20 legacy-verifier tests (`LegacyRootVerifier.t.sol`, including a property fuzz that checks the
+verifier against a brute-force model of random node trees: never valid for a contested or doomed node, always
+valid for an honest chain) and 7 market-level hardening tests (`Round6Hardening.t.sol`), plus one fork test on
+the live Xai rollup.
 
 Of these, 21 are new in this evidence pack: the 12 market and router invariants and 9 gas-budget tests
 (`GasBudget.t.sol`, see GAS.md). The vault has its own invariant suite (`ExitVaultInvariant.t.sol`, 5 invariants,

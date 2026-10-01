@@ -13,33 +13,33 @@ export const shortHash = (hash: string) => `${hash.slice(0, 10)}…${hash.slice(
 
 export const LIVE_PROOF: ReadonlyArray<ProofTx> = [
   {
-    label: "A 5 USDG withdrawal leaves Xai Testnet",
-    detail: "Exit #12, a standard bridge withdrawal",
+    label: "A 2.5 USDG withdrawal leaves Xai Testnet",
+    detail: "Exit #14, a standard bridge withdrawal",
     chain: "xaiTestnet",
-    hash: "0xf2acf5520923833e07abf580bf43596facf890dcf9acde596a66540a9393dda4",
+    hash: "0x15e38d3a378ff54e899a24d5b50483fb34d5f66d5562894540f66e4c6d655488",
   },
   {
     label: "Sold while still pending, in one signature",
-    detail: "v3 market: proven on-chain, price pulled from the vault, which now owns the exit",
+    detail: "v4 market: proven on-chain, no rival on its node chain, price pulled from the vault",
     chain: "arbitrumSepolia",
-    hash: "0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782",
+    hash: "0xa6eb8d37170fa78f4d386a30a27f8779c08f2a90c9ffa53d138b53f6cce3bf55",
   },
   {
     label: "Gasless: settled for a wallet holding 0 ETH",
-    detail: "Exit #13, one signed order; this site's relayer paid the gas",
+    detail: "Exit #16, one signed order; this site's relayer paid the gas",
     chain: "arbitrumSepolia",
-    hash: "0x7a9d6168e9bc171af415495716e600f50c91df6a0bd85e8bdcaf8ce3cfb1658f",
+    hash: "0xdcabb327855c2c00a6dad593f0cd7dd3af7a629ab1bd17f6708625b29d472f57",
   },
   {
-    label: "The keeper executed the exit through the Outbox",
-    detail: "Exit #12: permissionless, anyone can run it after the challenge period",
+    label: "Listed at the seller's price, bought by another wallet",
+    detail: "Exit #15: 2 USDG for 1.99; the Outbox later paid the buyer face value",
     chain: "arbitrumSepolia",
-    hash: "0x4c7ef727880843fc6a15c741fda4e5fff862b38a23e95c94eabf0426ef0a210b",
+    hash: "0x6ff67081cdb80666962905f0414ffcdb4902df940b2e6ac54ec35c5bbcd77031",
   },
   {
-    label: "The vault collected face value",
-    detail: "Exit #12: the purchase discount became LP yield",
+    label: "Executed through the Outbox, face value collected",
+    detail: "Exit #14 after the window: the permissionless keeper ran it, the vault collected",
     chain: "arbitrumSepolia",
-    hash: "0xb9dee04770a939b0779592e0a99192f84a017ea4d480c193c782b60f8bb84c49",
+    hash: "0x69afb2b235cf1e5a06ce1203b369e91678b4c6a29a97d69ce00987cefa0d8181",
   },
 ];

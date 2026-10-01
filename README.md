@@ -19,12 +19,14 @@ Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain 
    withdrawal ever made through Xai Testnet's standard gateway, read live from public RPCs, with the ones Exit
    Market bought marked.
 2. **Open any transaction in [Live on testnet](#live-on-testnet--every-step-is-a-real-transaction)** below: a
-   withdrawal, its sale while pending, and the keeper collecting it after the window.
-3. **Use the [desk](https://exit-market-gamma.vercel.app/app)** with a browser wallet (MetaMask, Rabby). It
-   needs testnet funds on Xai Testnet, which take a while to gather: Arbitrum Sepolia ETH
-   ([Alchemy faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)), USDG on Arbitrum Sepolia
-   ([Paxos faucet](https://faucet.paxos.com)), then USDG bridged to Xai Testnet, whose gas token is sXAI. The
-   scripts in [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key.
+   withdrawal, its sale while pending, a listing bought by another wallet, and the keeper settling each one.
+3. **Use the [desk](https://exit-market-gamma.vercel.app/app)** with a browser wallet (MetaMask, Rabby). An empty
+   wallet is fine: **Get test funds** sends 1.5 USDG and sXAI gas on Xai Testnet (once per address). Then start
+   a **Fast exit**: it needs no ETH on Arbitrum Sepolia, the site's relayer settles it as soon as Xai's next node
+   posts (~15 minutes). Selling to the vault yourself, listing at your price or buying a listing are one
+   transaction each on Arbitrum Sepolia and need a little ETH there
+   ([Alchemy faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)). The scripts in
+   [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key.
 
 **Testnet caveat.** Xai Testnet's challenge period is 150 L1 blocks (about 30 minutes), so the live demo and the
 Explorer show minutes. Arbitrum One and mainnet Orbit chains use 45,818 blocks, about 6.4 days, which is the wait
@@ -74,26 +76,32 @@ flowchart LR
   N --> G["gateway.transferExitAndCall<br/>(one signature)"]
   G --> M["ExitMarket.onExitTransfer<br/>1 market owns the exit<br/>2 leaf == this withdrawal<br/>3 root real while pending<br/>4 not yet claimed"]
   M --> V["ExitVault (ERC-4626, USDG)<br/>pays face - 0.10% - 10% APR x time left"]
-  V --> K["After the window: keeper executes<br/>through the Outbox, vault collects face"]
+  M --> L["Or a listing at the seller's price:<br/>any wallet buys it and owns the exit"]
+  V --> K["After the window: keeper executes<br/>through the Outbox, the owner is paid face"]
+  L --> K
   I["Gasless: withdraw to ExitIntentRouter,<br/>sign one EIP-712 order"] --> R["Any relayer settles it<br/>and pays the parent-chain gas"] --> G
 ```
 
-All four checks run inside the seller's transaction: `gateway.getExternalCall` (ownership), the Outbox item
-rebuilt byte for byte plus its Merkle path (`ExitLeaf.sol`), the root against a pending legacy node's
-`confirmData` or a registered BOLD assertion chain with no rival at any pending level, and `!Outbox.isSpent`.
+All four checks run inside the seller's transaction, and again on every listing purchase:
+`gateway.getExternalCall` (ownership), the Outbox item rebuilt byte for byte plus its Merkle path (`ExitLeaf.sol`),
+the root against a pending legacy node's `confirmData` or a registered BOLD assertion, **with no rival node at any
+level of its pending chain**, and `!Outbox.isSpent`.
 
 ## Trust model
 
 - **Validity comes only from Arbitrum's own contracts**: the Outbox Merkle proof against a pending rollup node's
   committed send root, and the Outbox spent bitmap. No oracle, no committee.
-- **No admin can move anyone's funds.** The live market has **no owner**: the v3 deployment allowed Xai Testnet's
-  two gateways and then renounced ownership ([tx](https://sepolia.arbiscan.io/tx/0xc2cf863cfcff2465e5055f76c1ad376862ca8d86c78d130b047969a3407118a1)),
+- **No admin can move anyone's funds.** The live market has **no owner**: the v4 deployment allowed Xai Testnet's
+  two gateways and then renounced ownership ([tx](https://sepolia.arbiscan.io/tx/0xa2d6cc472e56ce51b1d6e92f8b4e2af4d60b24a62df13df20d8e8e7ef6b1a8bb)),
   freezing its gateways, verifiers and 0.25% fee. The router has no owner. The vault's owner can only tune pricing
   inside hard caps (base fee ≤ 5%, APR ≤ 50%, exit size limits, accept pending exits on or off).
-- **The buyer's risk is a rejected node.** Buying before confirmation means trusting that the pending node the
-  exit was proven against is not rejected; the vault prices that and writes such exits off. On chains whose
-  validators are allowlisted (Xai Testnet is one), that rests on those validators, as the chain's own bridge does
-  until confirmation.
+- **The buyer's risk is a rejected node, and a disputed one stops trading.** Buying before confirmation means
+  trusting that the pending node the exit was proven against is not rejected; the vault prices that and writes such
+  exits off. The moment any validator disputes the branch (a rival node at any pending level), the exit can no
+  longer be sold or bought until the dispute resolves; what remains is a fraudulent node nobody disputes, which on
+  chains with allowlisted validators (Xai Testnet is one) is the same trust the chain's own bridge places in them.
+- **A buyer is only charged with its consent.** The vault returns `IExitBuyer.buyExit.selector` with its price;
+  without that the market pulls nothing, so a wallet that merely approved the market cannot be named as a buyer.
 - **The relayer cannot steal, and is optional.** The seller's signed order fixes the buyer and the minimum proceeds.
   Anyone can settle it, or reclaim the exit if nobody does: `node scripts/selfServe.ts settle <intent.json>` or
   `node scripts/selfServe.ts reclaim <withdrawalTx>`.
@@ -102,21 +110,25 @@ Full model, all findings and residual risks: [`docs/SECURITY.md`](docs/SECURITY.
 
 ## Live on testnet — every step is a real transaction
 
-Current contracts (**v3**, after the round-5 review):
+Current contracts (**v4**: rival-node check, buyer consent). Three exits, three ways out, each run to completion:
 
 | Step | Transaction |
 |---|---|
-| Exit #12: 5 USDG withdrawn on Xai Testnet | [`0xf2acf552…dda4`](https://testnet-explorer-v2.xai-chain.net/tx/0xf2acf5520923833e07abf580bf43596facf890dcf9acde596a66540a9393dda4) |
-| Sold to vault v3 while pending, one signature (market pulls the price from the vault) | [`0x20ba5315…c782`](https://sepolia.arbiscan.io/tx/0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782) |
-| Exit #13: gasless, withdrawn to router v3 by a fresh wallet with **0 ETH** on Arbitrum Sepolia | [`0xa84c81e6…22f5`](https://testnet-explorer-v2.xai-chain.net/tx/0xa84c81e625b4188ddedb26079bc0ab236b06855e6da2de40367d957320c322f5) |
-| Settled by the live site's relayer on Vercel; the seller received 4.96 USDG and still holds 0 ETH | [`0x7a9d6168…658f`](https://sepolia.arbiscan.io/tx/0x7a9d6168e9bc171af415495716e600f50c91df6a0bd85e8bdcaf8ce3cfb1658f) |
-| After the window, the permissionless keeper executed exit #12 through the Outbox and vault v3 collected face value | [`0x4c7ef727…210b`](https://sepolia.arbiscan.io/tx/0x4c7ef727880843fc6a15c741fda4e5fff862b38a23e95c94eabf0426ef0a210b) · [`0xb9dee047…4c49`](https://sepolia.arbiscan.io/tx/0xb9dee04770a939b0779592e0a99192f84a017ea4d480c193c782b60f8bb84c49) |
-| Same for the gasless exit #13: executed and collected, closing both v3 exits | [`0x61a77afb…ba84`](https://sepolia.arbiscan.io/tx/0x61a77afb157fb6fa7e581c1b083bb7782612d4bb0a72db62375f948d8dadba84) · [`0x168967a6…2dc5`](https://sepolia.arbiscan.io/tx/0x168967a62050731e3740a2fe6f91fb4e1e8d5f1c0fda18763770054840d22dc5) |
+| Exit #14: 2.5 USDG withdrawn on Xai Testnet | [`0x15e38d3a…5488`](https://testnet-explorer-v2.xai-chain.net/tx/0x15e38d3a378ff54e899a24d5b50483fb34d5f66d5562894540f66e4c6d655488) |
+| Sold to vault v4 while pending (node #61962, rival walk passed), one signature | [`0xa6eb8d37…bf55`](https://sepolia.arbiscan.io/tx/0xa6eb8d37170fa78f4d386a30a27f8779c08f2a90c9ffa53d138b53f6cce3bf55) |
+| Exit #16: gasless, withdrawn to router v4 by a fresh wallet with **0 ETH** on Arbitrum Sepolia | [`0x3ecf9d6a…5b3b`](https://testnet-explorer-v2.xai-chain.net/tx/0x3ecf9d6a830a849ad661d1094df4a6f23d8a9205f18ba83bf231c46530675b3b) |
+| Settled by the live site's relayer on Vercel; the seller received 2.47 USDG and still holds 0 ETH | [`0xdcabb327…2f57`](https://sepolia.arbiscan.io/tx/0xdcabb327855c2c00a6dad593f0cd7dd3af7a629ab1bd17f6708625b29d472f57) |
+| Exit #15: 2 USDG withdrawn, then **listed at 1.99 USDG** in the desk | [`0x6cbac052…b28d`](https://testnet-explorer-v2.xai-chain.net/tx/0x6cbac0526486a8b052b65361d74a6ac43a5b077186f14ee8fda8803136d1b28d) · [`0x66d6e6c0…f772`](https://sepolia.arbiscan.io/tx/0x66d6e6c091374fc72f00df3501bc157551c8f16d27f53a43a60dbd430991f772) |
+| **Bought by a second wallet** in the desk (exact approval, `buy` capped at the price; the market re-proved it) | [`0x6ff67081…7031`](https://sepolia.arbiscan.io/tx/0x6ff67081cdb80666962905f0414ffcdb4902df940b2e6ac54ec35c5bbcd77031) |
+| After the window the permissionless keeper executed all three through the Outbox: the vault collected #14 and #16, the listing's buyer was paid 2 USDG for #15 | [#14](https://sepolia.arbiscan.io/tx/0xb3876fcbdf0aeec643235d04e5cb62fdc52bb76c5439c4bd99f0c5c84f36923b) · [collect](https://sepolia.arbiscan.io/tx/0x69afb2b235cf1e5a06ce1203b369e91678b4c6a29a97d69ce00987cefa0d8181) · [#16](https://sepolia.arbiscan.io/tx/0x049c328ed00c32512f5e1f2a8ade69cbceceba414c9e70bc3b606ee1533c0621) · [collect](https://sepolia.arbiscan.io/tx/0xb9156a72a846a4ccc402af0f53b70665ef5a7767a01f96002914cebe448c144e) · [#15](https://sepolia.arbiscan.io/tx/0xe779bc5e205c7c9cf033570247ec746acb20b7fc10490c155c491a0f7a02398f) |
 
-Earlier contracts (v1, v2), same flow, all executed and collected by the keeper:
+Earlier contracts (v1 to v3), same flow, all executed and collected by the keeper:
 
 | Step | Transaction |
 |---|---|
+| Exit #12 (v3): sold while pending; the market pulled the price from the vault | [`0x20ba5315…c782`](https://sepolia.arbiscan.io/tx/0x20ba5315574be5a0884a0c43cae52d798bcd22a3656a4a2440a218601c1dc782) |
+| Exit #13 (v3): gasless from a 0-ETH wallet, settled by the relayer on Vercel | [`0x7a9d6168…658f`](https://sepolia.arbiscan.io/tx/0x7a9d6168e9bc171af415495716e600f50c91df6a0bd85e8bdcaf8ce3cfb1658f) |
+| Exits #12 and #13 (v3): executed and collected by the keeper | [`0x4c7ef727…210b`](https://sepolia.arbiscan.io/tx/0x4c7ef727880843fc6a15c741fda4e5fff862b38a23e95c94eabf0426ef0a210b) · [`0xb9dee047…4c49`](https://sepolia.arbiscan.io/tx/0xb9dee04770a939b0779592e0a99192f84a017ea4d480c193c782b60f8bb84c49) · [`0x61a77afb…ba84`](https://sepolia.arbiscan.io/tx/0x61a77afb157fb6fa7e581c1b083bb7782612d4bb0a72db62375f948d8dadba84) · [`0x168967a6…2dc5`](https://sepolia.arbiscan.io/tx/0x168967a62050731e3740a2fe6f91fb4e1e8d5f1c0fda18763770054840d22dc5) |
 | Exit #4: sold while pending (seller got 9.965 USDG) | [`0x1b724139…f430`](https://sepolia.arbiscan.io/tx/0x1b7241398b497ee83b045a6ee8e05256a3c7bae07884e75b9c02e6427db1f430) |
 | Exit #5: gasless, from a wallet with **0 ETH** on Arbitrum Sepolia, settled by the app's relayer | [`0xd11f3260…719d`](https://sepolia.arbiscan.io/tx/0xd11f3260936bd5231a430cec999489f7da4b724a65a282c27e4500f7195e719d) |
 | Exit #6 (v2): 10 USDG sold in the app while pending (seller got 9.96 USDG) | [`0xfc3a6c28…d87d`](https://sepolia.arbiscan.io/tx/0xfc3a6c284974612332fb8e1ff2667a52e9c6415c7e9d23a96f00e1c174a6d87d) |
@@ -130,21 +142,25 @@ Earlier contracts (v1, v2), same flow, all executed and collected by the keeper:
 |---|---|
 | **Token bridge** | `transferExitAndCall` / `onExitTransfer` on the real parent gateways; sources derived on-chain (gateway → inbox → bridge → rollup → outbox) |
 | **Outbox + NodeInterface** | leaf rebuilt byte for byte (`ExitLeaf.sol`), proofs from `NodeInterface.constructOutboxProof` against a *pending* node |
-| **Legacy rollups** (Xai, most live Orbit L3s) | a pending node's `confirmData == keccak256(blockHash, sendRoot)` commits to its withdrawals |
-| **BOLD** (Arbitrum One/Nova, new Orbit chains) | `BoldRootVerifier` registers assertion preimages and walks every pending ancestor. On an Ethereum mainnet fork a **real pending Arbitrum One withdrawal** (504.7 LINK) is proven and listed through the **real L1 gateway** over its real pending chain (137 assertions deep when recorded; 1.10M gas for the walk on 2026-10-01). The live testnet uses the legacy verifier because Xai Testnet is a pre-BOLD rollup; the TypeScript proof builder and keeper are legacy-only today |
+| **Legacy rollups** (Xai, most live Orbit L3s) | a pending node's `confirmData == keccak256(blockHash, sendRoot)` commits to its withdrawals; `LegacyRootVerifier` walks `prevNum` links to the latest confirmed node and refuses the root if any level has a rival child (from RollupCore's `latestChildNumber` / `firstChildBlock`). On the live rollup: 2 pending levels, 56k gas |
+| **BOLD** (Arbitrum One/Nova, new Orbit chains) | `BoldRootVerifier` registers assertion preimages and walks every pending ancestor. The TypeScript library builds BOLD claims too (`scripts/lib/boldProof.ts`): on an Ethereum mainnet fork it proves a **real pending Arbitrum One withdrawal** under a **134-deep** real pending chain, and it is listed through the **real L1 gateway** (1.34M gas for the walk). The live testnet uses the legacy verifier because Xai Testnet is a pre-BOLD rollup |
 | **Orbit L3** | live end to end on Xai Testnet → Arbitrum Sepolia |
 | **Stylus** | the proof core in Rust/WASM, activated at [`0x30ac…1394`](https://sepolia.arbiscan.io/address/0x30ac015003186f187b9a11fff2781d55cc9e1394) and checked on-chain against a real Xai send root. It is a benchmark, not in the sale path, and not source-verified. Honest result: Solidity is cheaper at these depths (37.8k vs 69.0k gas at depth 7; 123.0k vs 131.7k at depth 64), [`docs/audit/STYLUS_BENCH.json`](docs/audit/STYLUS_BENCH.json) |
 | **Arbitrum SDK** | `@arbitrum/sdk` registers Xai Testnet as a custom network and bridges USDG (`scripts/demo/bridgeSetup.ts`) |
 
 ## Security and quality
 
-- **413 Solidity tests + 9 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz, stateful
-  invariants (market, router, vault) and exploit regressions. Coverage: [`docs/audit/COVERAGE.md`](docs/audit/COVERAGE.md).
-- **Five internal review rounds** by specialised AI review agents (not a third-party audit). Every High or
-  Critical finding was reproduced as an exploit test before its fix, including round 5's two Highs (a market
-  balance-delta theft and the owner's ability to allow a hostile gateway), fixed and redeployed as v3:
-  [`docs/SECURITY.md`](docs/SECURITY.md).
-- **Slither: no open finding.** Every detector that fires on the v3 sources, including two rated High, is triaged with its reason and test ([`docs/audit/SLITHER.md`](docs/audit/SLITHER.md)). Gas: [`docs/audit/GAS.md`](docs/audit/GAS.md).
+- **440 Solidity tests + 10 fork tests** against the real Xai and Arbitrum One contracts: unit, fuzz (including a
+  brute-force model of random rollup node trees for the rival check), stateful invariants (market, router, vault)
+  and exploit regressions. **99.42% line coverage** of the production contracts (513/516; the three misses are
+  defensive reverts): [`docs/audit/COVERAGE.md`](docs/audit/COVERAGE.md).
+- **Six internal review rounds** (AI-assisted, not a third-party audit). Every High or Critical finding was
+  reproduced as an exploit test before its fix, including round 5's two Highs (a market balance-delta theft and the
+  owner's ability to allow a hostile gateway). Round 6 closed the residual risks: the legacy verifier now refuses a
+  contested node, and buyers must consent before they are charged. Redeployed as v4: [`docs/SECURITY.md`](docs/SECURITY.md).
+- **Slither: no open finding.** Every detector that fires on the v4 sources, including two rated High, is triaged with its reason and test ([`docs/audit/SLITHER.md`](docs/audit/SLITHER.md)). Gas: [`docs/audit/GAS.md`](docs/audit/GAS.md).
+- **Web hardening:** a Content-Security-Policy limited to the origins the site uses, frame and sniffing protection,
+  rate-limited relayer and faucet APIs.
 - **CI** on every push: contracts, generated-ABI drift check, typecheck, web unit tests, lint and a production build
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
@@ -164,10 +180,10 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 | `contracts/ExitIntentRouter.sol` | gasless sign-once exits, reclaim, recovery of executed exits |
 | `contracts/verifiers/` | `LegacyRootVerifier` (node-based rollups) and `BoldRootVerifier` (BOLD) |
 | `contracts/libraries/` | `ExitLeaf` (Outbox item + Merkle, byte for byte), `ExitAccrual`, `ExitKeys` |
-| `scripts/lib/` | the TypeScript library the app and scripts share ([README](scripts/lib/README.md), entry `index.ts`): proof builder, hook encoding, relayer, ABIs generated from the contracts |
-| `scripts/` | deploy, permissionless keeper, demo flows |
+| `scripts/lib/` | the TypeScript library the app and scripts share ([README](scripts/lib/README.md), entry `index.ts`): legacy and BOLD proof builders, hook encoding, listings, relayer, ABIs generated from the contracts |
+| `scripts/` | deploy, permissionless keeper (executes every verified exit, collects for the vault, settles listings), demo flows |
 | `stylus/exit-proof/` | the proof core in Rust (Stylus SDK 0.9) |
-| `web/` | Next.js app: landing (`/`), seller desk with gasless exits and the vault (`/app`), live Exit Explorer (`/explorer`), pitch deck (`/pitch`), relayer API |
+| `web/` | Next.js app: landing (`/`), desk with instant sale, gasless exits, listings, test funds and the vault (`/app`), live Exit Explorer (`/explorer`), pitch deck (`/pitch`), relayer and faucet APIs |
 | `research/stranded/` | the mainnet stranded-exit, challenge-window and hook-usage research |
 | `video/` | the demo video as code: Blender (Cycles) shots, live-app capture harness, cards, assembler |
 
@@ -175,8 +191,8 @@ bought. Details and honest limits (price vs CCTP, ETH and gas-token exits): [`do
 
 ```bash
 npm install
-npx hardhat test solidity                      # 413 tests
-FORK_TESTS=1 npx hardhat test solidity         # + 9 fork tests against Xai and Arbitrum One mainnet
+npx hardhat test solidity                      # 440 tests
+FORK_TESTS=1 npx hardhat test solidity         # + 10 fork tests against Xai Testnet and Arbitrum One mainnet
 npm run test:lib && npm run test:web           # library and web unit tests
 npm run typecheck                              # both TypeScript projects
 npm run web:dev                                # http://localhost:3000, no configuration needed
@@ -184,17 +200,17 @@ node scripts/keeper.ts --loop                  # permissionless keeper
 node scripts/selfServe.ts settle <intent.json>  # be your own relayer (or: reclaim <withdrawalTx>)
 ```
 
-## Deployments (Arbitrum Sepolia, v3)
+## Deployments (Arbitrum Sepolia, v4)
 
-Addresses are also in [`deployments/arbitrumSepolia.json`](deployments/arbitrumSepolia.json), with v1 and v2 under
+Addresses are also in [`deployments/arbitrumSepolia.json`](deployments/arbitrumSepolia.json), with v1 to v3 under
 `history`. Source verified on Sourcify.
 
 | Contract | Address |
 |---|---|
-| ExitMarket (no owner) | [`0xd2ae19b152661604e0dbcb49baea66bf9efc439c`](https://sepolia.arbiscan.io/address/0xd2ae19b152661604e0dbcb49baea66bf9efc439c) |
-| ExitVault (evUSDG) | [`0x406e9e177a59d408fe7b9ed778ed336e41ab0f8f`](https://sepolia.arbiscan.io/address/0x406e9e177a59d408fe7b9ed778ed336e41ab0f8f) |
-| ExitIntentRouter | [`0x3b32345392c5f713ef54d98c61283a7f3cdc3074`](https://sepolia.arbiscan.io/address/0x3b32345392c5f713ef54d98c61283a7f3cdc3074) |
-| LegacyRootVerifier | [`0xb06028304345d9ed295d812aca5f1430ec9808c9`](https://sepolia.arbiscan.io/address/0xb06028304345d9ed295d812aca5f1430ec9808c9) |
+| ExitMarket (no owner) | [`0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0`](https://sepolia.arbiscan.io/address/0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0) |
+| ExitVault (evUSDG) | [`0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c`](https://sepolia.arbiscan.io/address/0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c) |
+| ExitIntentRouter | [`0x0705322c2917c8dbad0e49e668b7ef8921903a4e`](https://sepolia.arbiscan.io/address/0x0705322c2917c8dbad0e49e668b7ef8921903a4e) |
+| LegacyRootVerifier (rival check) | [`0x32c601710761500cd783187d5d60fb3d005b9375`](https://sepolia.arbiscan.io/address/0x32c601710761500cd783187d5d60fb3d005b9375) |
 | BoldRootVerifier | [`0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903`](https://sepolia.arbiscan.io/address/0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903) |
 | Stylus ExitProof (benchmark, not source-verified) | [`0x30ac015003186f187b9a11fff2781d55cc9e1394`](https://sepolia.arbiscan.io/address/0x30ac015003186f187b9a11fff2781d55cc9e1394) |
 | Payment token (Paxos USDG) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |

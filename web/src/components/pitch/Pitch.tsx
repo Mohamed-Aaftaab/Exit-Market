@@ -28,7 +28,7 @@ const TECH: ReadonlyArray<[string, string]> = [
   ["Token bridge", "transferExitAndCall on the real parent gateways"],
   ["Outbox", "Leaves rebuilt byte for byte; NodeInterface proofs"],
   ["Orbit L3", "Live end to end on Xai Testnet"],
-  ["BOLD", "A real pending Arbitrum One exit proven over its real pending chain (mainnet fork, ~1.1M gas)"],
+  ["BOLD", "A real pending Arbitrum One exit proven over its real pending chain (mainnet fork, ~1.3M gas)"],
   ["Stylus", "The proof core in Rust, live, with an honest gas benchmark"],
   ["Rollup nodes", "Pending legacy nodes already commit to their send roots"],
 ];
@@ -133,7 +133,7 @@ function Mechanism() {
   const checks = [
     ["Market owns the exit", "gateway.getExternalCall(exitNum, initialDestination)"],
     ["Leaf is this withdrawal", "Outbox item rebuilt byte for byte, minimal Merkle path"],
-    ["Root is real while pending", "Legacy: node.confirmData · BOLD: assertion chain, no rival at any pending level"],
+    ["Root is real while pending", "Legacy: node.confirmData · BOLD: assertion chain · both: no rival at any pending level"],
     ["Not claimed yet", "!Outbox.isSpent(index)"],
   ];
   return (
@@ -163,7 +163,7 @@ function Mechanism() {
             </div>
           ))}
         </div>
-        <p className={styles.text}>No oracle, no committee, and the market has no owner. The buyer&apos;s risk is a pending rollup node being rejected, which the vault prices and writes off.</p>
+        <p className={styles.text}>No oracle, no committee, and the market has no owner. The buyer&apos;s risk is a pending rollup node being rejected, which the vault prices and writes off; the moment a validator disputes it, it stops trading.</p>
       </Slide>
       <Slide n={8}>
         <p className="eyebrow">Gasless exits</p>
@@ -186,7 +186,7 @@ function Mechanism() {
 }
 
 function Evidence() {
-  const numbers = [["422", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["5", "internal review rounds"], ["0", "open Slither findings, all triaged"]];
+  const numbers = [["450", "tests: unit, fuzz, invariants, forks"], ["99.4%", "line coverage, production code"], ["6", "internal review rounds"], ["0", "open Slither findings, all triaged"]];
   return (
     <>
       <Slide n={9}>

@@ -1,7 +1,7 @@
 {
   "title": "Exit Market: the safest way out of Arbitrum, now instant",
   "voice": "af_heart",
-  "speed": 1.0,
+  "speed": 1,
   "segments": [
     {
       "id": "01-lock",
@@ -34,6 +34,11 @@
       "text": "No gas on the other side? Withdraw straight to our router, and sign once. This wallet holds zero ETH on Arbitrum Sepolia. A relayer settles the sale and pays the gas, and the USDG still lands."
     },
     {
+      "id": "06b-listing",
+      "text": "Or set your own price. List the withdrawal in one signature, and it appears for every buyer, with its proof checked again on chain. Here a second wallet buys it at that price, and when the challenge period ends, the bridge pays the buyer in full.",
+      "visual": "App footage: exit #15 listed at 1.99 USDG and shown under Open listings; a second wallet buys it (Arbiscan 0x6ff67081)"
+    },
+    {
       "id": "07-vault",
       "visual": "3D shot 4: the capsule enters the vault; USDG streams out; the countdown keeps turning inside the vault",
       "text": "Liquidity providers earn the discount. When the challenge period ends, a permissionless keeper executes the withdrawal, and the vault collects. Idle capital becomes yield."
@@ -45,8 +50,8 @@
     },
     {
       "id": "09-depth",
-      "visual": "Proof cards: BOLD mainnet fork (137-deep pending chain, about 1.1M gas); Stylus verifier; 422 tests, five review rounds",
-      "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over four hundred tests, five rounds of security review, and every high severity finding reproduced and fixed."
+      "visual": "Proof cards: BOLD mainnet fork (134-deep pending chain, about 1.3M gas); Stylus verifier; tests and six review rounds",
+      "text": "And it goes beyond testnet. Arbitrum One runs BOLD, so we verify pending BOLD assertions on chain, and on a mainnet fork we listed a real pending Arbitrum One withdrawal through the real bridge. The proof verifier also runs in Rust, on Stylus. Over four hundred tests, six rounds of security review, and every high severity finding reproduced and fixed."
     },
     {
       "id": "10-close",
