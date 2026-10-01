@@ -11,7 +11,7 @@ Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain 
 
 [Live app](https://exit-market-gamma.vercel.app) · [Desk](https://exit-market-gamma.vercel.app/app) ·
 [Exit Explorer](https://exit-market-gamma.vercel.app/explorer) · [Pitch deck](https://exit-market-gamma.vercel.app/pitch) ·
-[Source](https://github.com/Mohamed-Aaftaab/Exit-Market) · Demo video: link added at submission
+[Source](https://github.com/Mohamed-Aaftaab/Exit-Market) · [Demo video (3 min)](https://youtu.be/h0rxSgWkFlg)
 
 ## Try it in two minutes
 

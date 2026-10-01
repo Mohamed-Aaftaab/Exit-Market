@@ -1,5 +1,7 @@
 # Demo video
 
+Watch it: https://youtu.be/h0rxSgWkFlg
+
 The submitted video is `video/out/exit-market-demo-captioned.mp4` (2:58.6, 1080p, burned-in captions, Kokoro text-to-speech narration).
 It is built from source, not edited by hand: [`video/script.json`](../video/script.json) holds every scene's visuals
 and narration, the app scenes are recorded against the live site by `video/capture/record.ts`, and

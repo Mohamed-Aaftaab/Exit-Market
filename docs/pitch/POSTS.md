@@ -2,7 +2,7 @@
 
 Recheck each post's length in the X composer. Handles: @arbitrum, @OffchainLabs, @HackQuest_.
 
-Only the demo video link is still a placeholder ([video]); fill it once uploaded.
+Demo video: https://youtu.be/h0rxSgWkFlg
 
 ## X thread
 
@@ -85,7 +85,7 @@ Live on Arbitrum Sepolia + Xai Testnet: real sales, a listing bought by another 
 
 Feedback wanted: which chain and token would you sell first on mainnet?
 
-Demo: [video] | App: https://exit-market-gamma.vercel.app | Code: https://github.com/Mohamed-Aaftaab/Exit-Market
+Demo: https://youtu.be/h0rxSgWkFlg | App: https://exit-market-gamma.vercel.app | Code: https://github.com/Mohamed-Aaftaab/Exit-Market
 ```
 
 ## HackQuest submission summary (≤120 words)
