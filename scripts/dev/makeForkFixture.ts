@@ -1,28 +1,51 @@
 /**
- * Generates contracts/test/fork/XaiExitFixture.sol: a real, UNSPENT Xai Testnet withdrawal with its proof
- * against the newest rollup node, pinned to the current Arbitrum Sepolia block for a fork test.
- * Usage: node scripts/dev/makeForkFixture.ts <withdrawal-tx-hash>
+ * Generates contracts/test/fork/XaiExitFixture.sol: a real, UNSPENT and untransferred Xai Testnet withdrawal with its
+ * proof against the newest (still PENDING) rollup node, pinned to the current Arbitrum Sepolia block for a fork test.
+ * Usage: node scripts/dev/makeForkFixture.ts <withdrawal-tx-hash>   (scripts/dev/findUnspentExits.ts lists candidates)
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createPublicClient, http, type Hex } from "viem";
+import { createPublicClient, http, parseAbi, type Hex } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { buildExitProof } from "../lib/exitProof.ts";
-import { XAI_TESTNET } from "../lib/networks.ts";
+import { decodeWithdrawal, findLatestNode, outboxPathOf, toExitProof } from "../lib/exitProof.ts";
+import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "../lib/networks.ts";
 
 const tx = process.argv[2] as Hex | undefined;
 if (!tx) throw new Error("Usage: node scripts/dev/makeForkFixture.ts <withdrawal-tx-hash>");
 
-const parent = createPublicClient({ chain: arbitrumSepolia, transport: http("https://sepolia-rollup.arbitrum.io/rpc") });
+const parent = createPublicClient({ chain: arbitrumSepolia, transport: http(ARBITRUM_SEPOLIA.rpcUrl) });
 const child = createPublicClient({ transport: http(XAI_TESTNET.rpcUrl) });
+const rollupAbi = parseAbi(["function firstUnresolvedNode() view returns (uint64)"]);
+const outboxAbi = parseAbi(["function roots(bytes32 root) view returns (bytes32)"]);
+const gatewayAbi = parseAbi([
+  "function getExternalCall(uint256 exitNum, address initialDestination, bytes initialData) view returns (address target, bytes data)",
+]);
 
 const forkBlock = await parent.getBlockNumber();
-const w = await buildExitProof({
-  parent,
-  child,
-  rollup: XAI_TESTNET.ethBridge.rollup,
-  childGateway: XAI_TESTNET.tokenBridge.childErc20Gateway,
-  withdrawalTx: tx,
+const d = await decodeWithdrawal(child, XAI_TESTNET.tokenBridge.childErc20Gateway, tx);
+const [holder] = await parent.readContract({
+  address: XAI_TESTNET.tokenBridge.parentErc20Gateway,
+  abi: gatewayAbi,
+  functionName: "getExternalCall",
+  args: [d.exitNum, d.initialDestination, "0x"],
+  blockNumber: forkBlock,
 });
+if (holder !== d.initialDestination) throw new Error(`Exit #${d.exitNum} was already transferred (held by ${holder}): pick another`);
+
+// The fork tests exercise the rival walk, so prove against the newest node rather than a confirmed one.
+const [node, firstUnresolved] = await Promise.all([
+  findLatestNode(parent, child, XAI_TESTNET.ethBridge.rollup),
+  parent.readContract({ address: XAI_TESTNET.ethBridge.rollup, abi: rollupAbi, functionName: "firstUnresolvedNode", blockNumber: forkBlock }),
+]);
+if (node.nodeNum < firstUnresolved) throw new Error(`Newest node ${node.nodeNum} is already resolved: retry after the next assertion`);
+// Consecutive nodes share a send root until a new withdrawal is sent; a root the Outbox already holds verifies as
+// confirmed, so the pending-path test needs a fresh one (any Xai withdrawal, e.g. 0.001 sXAI via ArbSys.withdrawEth).
+const confirmedAt = await parent.readContract({ address: XAI_TESTNET.ethBridge.outbox, abi: outboxAbi, functionName: "roots", args: [node.sendRoot], blockNumber: forkBlock });
+if (BigInt(confirmedAt) !== 0n) {
+  throw new Error(`Newest node ${node.nodeNum} repeats a confirmed send root: send any Xai withdrawal, then retry after the next node`);
+}
+if (node.sendCount <= d.position) throw new Error(`Exit #${d.exitNum} is not asserted yet: retry after the next assertion`);
+const merkleProof = await outboxPathOf(child, node.sendCount, d.position, node.sendRoot);
+const w = toExitProof(d, merkleProof, { sendRoot: node.sendRoot, nodeNum: node.nodeNum, blockHash: node.blockHash });
 const p = w.proof;
 const proofLines = p.merkleProof.map((h, i) => `        p[${i}] = ${h};`).join("\n");
 
