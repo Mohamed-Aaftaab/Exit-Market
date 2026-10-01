@@ -26,11 +26,14 @@ export function ListForm({
   sale,
   list,
   blocked,
+  onCommit,
 }: {
   sale: PreparedSale;
   list: ReturnType<typeof useListExit>;
   /** Why the market would refuse a listing right now; the form is disabled and says why. */
   blocked: string | undefined;
+  /** Called as the listing is submitted (see SellTicket). */
+  onCommit: () => void;
 }) {
   const [priceInput, setPriceInput] = useState(() => suggestedPrice(sale));
   const [expiryIndex, setExpiryIndex] = useState(DEFAULT_EXPIRY);
@@ -43,6 +46,7 @@ export function ListForm({
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (blocked || price === undefined || aboveFace) return;
+    onCommit();
     list.mutate({ withdrawal: sale.withdrawal, price, durationSeconds: BigInt(EXPIRIES[expiryIndex][1]) });
   };
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { zeroAddress, type Address } from "viem";
-import { useAccount, useReadContracts, useWriteContract } from "wagmi";
+import { useAccount, useBlock, useReadContracts, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { useParentTx } from "@/hooks/useParentTx";
 import { ARBITRUM_SEPOLIA, DEPLOYMENT, erc20Abi, vaultAbi } from "@/lib/contracts";
@@ -33,10 +33,15 @@ function useVaultStats(vault: Address | undefined, user: Address | undefined) {
       { chainId, address: target, abi: vaultAbi, functionName: "SHARE_LOCK" },
       { chainId, address: target, abi: vaultAbi, functionName: "shareUnlockTime", args: [holder] },
       { chainId, address: ARBITRUM_SEPOLIA.usdg, abi: erc20Abi, functionName: "balanceOf", args: [holder] },
+      // 0 while deposits are paused (an exit from a rejected node is being written off or collected).
+      { chainId, address: target, abi: vaultAbi, functionName: "maxDeposit", args: [holder] },
+      { chainId, address: target, abi: vaultAbi, functionName: "balanceOf", args: [holder] },
     ],
     query: { enabled: Boolean(vault), refetchInterval: 30_000 },
   });
-  const [totalAssets, idle, outstanding, aprBps, baseFeeBps, withdrawable, shareLock, unlockTime, walletUsdg] =
+  // Share locks end at a chain timestamp, so compare with the chain's clock rather than the browser's.
+  const block = useBlock({ chainId, query: { refetchInterval: 30_000 } });
+  const [totalAssets, idle, outstanding, aprBps, baseFeeBps, withdrawable, shareLock, unlockTime, walletUsdg, maxDeposit, shares] =
     reads.data ?? [];
   // NAV carries each open exit's discount as it accrues toward its deadline (and values rejected exits at 0).
   const accrued =
@@ -53,6 +58,9 @@ function useVaultStats(vault: Address | undefined, user: Address | undefined) {
     shareLockHours: shareLock === undefined ? undefined : Number(shareLock) / 3600,
     withdrawable: user ? withdrawable : undefined,
     unlockTime: user && unlockTime ? Number(unlockTime) : undefined,
+    isLocked: user && unlockTime !== undefined && block.data ? unlockTime > block.data.timestamp : undefined,
+    hasShares: user && shares !== undefined ? shares > 0n : undefined,
+    depositsPaused: maxDeposit === 0n,
     walletUsdg: user ? walletUsdg : undefined,
   };
 }
@@ -118,6 +126,9 @@ function AmountForm({
   );
 }
 
+const DEPOSITS_PAUSED =
+  "Deposits are paused: the vault holds an exit from a rejected rollup node, so its share price may be understated until that exit pays out or its impairment window ends.";
+
 export function VaultPanel() {
   const { address } = useAccount();
   const vault = DEPLOYMENT.vault;
@@ -127,13 +138,18 @@ export function VaultPanel() {
 
   if (!vault) return <p className="p-5 text-sm text-muted">Vault not deployed yet.</p>;
 
-  // The vault itself reports 0 withdrawable while shares are locked; show when they unlock.
+  // The vault reports 0 withdrawable while shares are locked and while it has no idle USDG; say which.
   const lockNote =
-    stats.unlockTime !== undefined && stats.withdrawable === 0n
-      ? `Your shares unlock ${new Date(stats.unlockTime * 1000).toLocaleString()} (or when idle liquidity returns).`
-      : undefined;
+    stats.withdrawable !== 0n || !stats.hasShares
+      ? undefined
+      : stats.isLocked && stats.unlockTime !== undefined
+        ? `Your shares unlock ${new Date(stats.unlockTime * 1000).toLocaleString()}.`
+        : "Withdrawals wait for idle USDG, which returns as the vault's exits are collected.";
+  const lockDays = stats.shareLockHours === undefined ? undefined : stats.shareLockHours / 24;
 
   async function deposit(assets: bigint, setStatus: (s: string) => void) {
+    // Checked before the approval: a paused vault would take the approval and then revert the deposit.
+    if (stats.depositsPaused) throw new Error(DEPOSITS_PAUSED);
     setStatus("Approving USDG…");
     await sendTx(() =>
       writeContractAsync({ chainId: arbitrumSepolia.id, address: ARBITRUM_SEPOLIA.usdg, abi: erc20Abi, functionName: "approve", args: [vault!, assets] }),
@@ -182,7 +198,18 @@ export function VaultPanel() {
         />
         <Stat label="Your withdrawable" value={usdg(stats.withdrawable)} />
       </dl>
-      <AmountForm label="USDG to deposit" action="Deposit" busyLabel="Depositing…" disabled={!address} onSubmit={deposit} />
+      <AmountForm
+        label="USDG to deposit"
+        action="Deposit"
+        busyLabel="Depositing…"
+        disabled={!address || stats.depositsPaused}
+        onSubmit={deposit}
+      />
+      <p className="text-xs text-muted">
+        {stats.depositsPaused
+          ? DEPOSITS_PAUSED
+          : lockDays !== undefined && `Each deposit locks all of this wallet's vault shares for ${lockDays} days; the lock restarts with every deposit.`}
+      </p>
       <AmountForm
         label="USDG to withdraw"
         action="Withdraw"

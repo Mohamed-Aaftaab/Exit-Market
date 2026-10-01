@@ -83,9 +83,12 @@ export interface FailureAdvice {
   canResign: boolean;
 }
 
+/** The router's OrderExpired revert, or the relayer's own pre-check that catches the same expiry before any RPC call. */
+const EXPIRED = /^Order ?expired\b/i;
+
 /** What a failed gasless exit needs from its seller, from the relayer's reason (a contract error name, args). */
 export function failureAdvice(detail: string | undefined): FailureAdvice {
-  if (detail?.startsWith("OrderExpired")) {
+  if (detail !== undefined && EXPIRED.test(detail)) {
     return { text: "The signed order expired before it could settle. Sign a new one: it is free and needs no gas.", canResign: true };
   }
   return {

@@ -4,8 +4,10 @@ import { useState } from "react";
 import { ListForm } from "@/components/ListForm";
 import { ProofTrace } from "@/components/ProofTrace";
 import { usePreparedSale, useSellExit, type PreparedSale } from "@/hooks/useExitSale";
+import { useGaslessIntents, type GaslessIntent } from "@/hooks/useGaslessExit";
 import { useListExit } from "@/hooks/useListingActions";
 import { proofBlocker, vaultSizeRefusal } from "@/lib/exitLimits";
+import { failureAdvice } from "@/lib/intentStore";
 import type { WithdrawalRow } from "@/hooks/useWithdrawals";
 import { arbitrumSepolia } from "wagmi/chains";
 import { blocksToDuration, bps, errorText, usdg } from "@/lib/format";
@@ -57,10 +59,40 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
   );
 }
 
-export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
+/**
+ * What a fast exit still needs, from this browser's copy of its order: usually nothing, but an unsigned or failed
+ * order waits for its seller, and an order signed in another browser is only known there.
+ */
+function gaslessNote(intent: GaslessIntent | undefined): string {
+  if (!intent) {
+    return (
+      "This fast exit was started in another browser, which keeps its signed order: open the desk there. Without it, " +
+      "the exit can be returned to you (node scripts/selfServe.ts reclaim <withdrawal tx>; anyone may do it after 3 days)."
+    );
+  }
+  if (intent.status === "unsigned") {
+    return "This fast exit is waiting for your signature: use “sign order” in the fast-exit list below your withdrawals. Signing is free and needs no gas.";
+  }
+  if (intent.status === "failed") {
+    const advice = failureAdvice(intent.detail);
+    return advice.canResign ? `${advice.text} Use “sign a new order” below your withdrawals.` : advice.text;
+  }
+  const relayer = intent.detail ? ` Relayer: ${intent.detail}.` : "";
+  return `This is a fast exit: the relayer sells it to the vault as soon as it is asserted and the USDG lands in your wallet on Arbitrum. Nothing else to do.${relayer}`;
+}
+
+export function SellTicket({  row,
+  onCommit,
+}: {
+  row: WithdrawalRow | undefined;
+  /** Called as a sale or listing starts: the desk pins this withdrawal, so the refresh that follows (which changes
+   *  its status) cannot move the selection and take the receipt with it. */
+  onCommit: () => void;
+}) {
   const prepared = usePreparedSale(row);
   const sell = useSellExit();
   const list = useListExit();
+  const intents = useGaslessIntents();
   const [mode, setMode] = useState<Mode>("sell");
 
   if (!row) {
@@ -107,12 +139,7 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
     );
   }
   if (row.status === "gasless") {
-    return (
-      <p className="p-6 text-sm text-muted">
-        This is a fast exit: the relayer sells it to the vault as soon as it is asserted and the USDG lands in
-        your wallet on Arbitrum. Nothing else to do.
-      </p>
-    );
+    return <p className="p-6 text-sm text-muted">{gaslessNote(intents.find((i) => i.withdrawalTx === row.txHash))}</p>;
   }
   if (row.status === "listed") {
     return (
@@ -149,10 +176,16 @@ export function SellTicket({ row }: { row: WithdrawalRow | undefined }) {
       {mode === "list" ? (
         <>
           <ProofTrace sale={sale} />
-          <ListForm sale={sale} list={list} blocked={blocked} />
+          <ListForm sale={sale} list={list} blocked={blocked} onCommit={onCommit} />
         </>
       ) : (
-        <InstantSale sale={sale} breakdown={b} sell={sell} blocked={blocked ?? vaultSizeRefusal(sale.record.amount, sale.vaultLimits)} />
+        <InstantSale
+          sale={sale}
+          breakdown={b}
+          sell={sell}
+          blocked={blocked ?? vaultSizeRefusal(sale.record.amount, sale.vaultLimits)}
+          onCommit={onCommit}
+        />
       )}
     </div>
   );
@@ -163,12 +196,14 @@ function InstantSale({
   breakdown: b,
   sell,
   blocked,
+  onCommit,
 }: {
   sale: PreparedSale;
   breakdown: ReturnType<typeof breakdownOf>;
   sell: ReturnType<typeof useSellExit>;
   /** Why the chain would refuse this sale; the button is replaced by the reason. */
   blocked: string | undefined;
+  onCommit: () => void;
 }) {
   // The vault pays from idle USDG; what it has spent on earlier exits returns as each clears its window.
   const hasLiquidity = sale.vaultIdle >= sale.vaultQuote;
@@ -192,7 +227,10 @@ function InstantSale({
           type="button"
           disabled={sell.isPending}
           aria-busy={sell.isPending}
-          onClick={() => sell.mutate(sale)}
+          onClick={() => {
+            onCommit();
+            sell.mutate(sale);
+          }}
           className="btn-primary w-full"
         >
           {sell.isPending ? "Confirm in wallet…" : `Get ${usdg(b.receive)} USDG now`}

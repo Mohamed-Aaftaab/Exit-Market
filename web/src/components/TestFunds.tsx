@@ -2,14 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { erc20Abi, formatEther, type Address, type Hash } from "viem";
-import { usePublicClient } from "wagmi";
-import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "@/lib/contracts";
+import { usePublicClient, useReadContract } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import { ARBITRUM_SEPOLIA, DEPLOYMENT, XAI_TESTNET, vaultAbi } from "@/lib/contracts";
+import { fastExitMinimum } from "@/lib/exitLimits";
 import { FAUCET_GAS, FAUCET_USDG } from "@/lib/faucet";
 import { errorText, usdg } from "@/lib/format";
 import { xaiTestnet } from "@/lib/wagmi";
-
-/** Smallest exit the vault buys (ExitVault.minExitAmount defaults to one whole USDG). */
-const MIN_SELLABLE = 1_000_000n;
 
 type FaucetResult = { usdgTx: Hash; gasTx?: Hash };
 
@@ -49,10 +48,19 @@ export function TestFunds({ address }: { address: Address }) {
       return { usdg: usdgBalance, gas };
     },
   });
+  // Enough USDG means enough for the smallest fast exit, read from the live vault rather than assumed.
+  const vaultMinExit = useReadContract({
+    chainId: arbitrumSepolia.id,
+    address: DEPLOYMENT.vault,
+    abi: vaultAbi,
+    functionName: "minExitAmount",
+    query: { enabled: Boolean(DEPLOYMENT.vault) },
+  });
   const faucet = useMutation({ mutationFn: () => requestFunds(address), onSuccess: () => queryClient.invalidateQueries() });
 
   if (!balances.data) return null;
-  const needsFunds = balances.data.usdg < MIN_SELLABLE || balances.data.gas === 0n;
+  const minimum = vaultMinExit.data === undefined ? undefined : fastExitMinimum(vaultMinExit.data);
+  const needsFunds = balances.data.gas === 0n || (minimum !== undefined && balances.data.usdg < minimum);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs" role="group" aria-label="Your balances on Xai Testnet">

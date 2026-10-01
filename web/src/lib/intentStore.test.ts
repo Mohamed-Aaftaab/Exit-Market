@@ -76,6 +76,8 @@ test("relayer responses map to the right status", () => {
 test("failureAdvice offers a fresh signature only when the order merely expired", () => {
   const expired = failureAdvice("OrderExpired(1700000000)");
   assert.equal(expired.canResign, true);
+  // The relayer rejects an expired order itself (relayGuard) before the contract ever sees it.
+  assert.equal(failureAdvice("Order expired").canResign, true);
   const tooSmall = failureAdvice("ExitTooSmall(500000, 1000000)");
   assert.equal(tooSmall.canResign, false);
   assert.match(tooSmall.text, /ExitTooSmall/);

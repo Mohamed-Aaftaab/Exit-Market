@@ -97,6 +97,11 @@ function serialize(order: SellOrder): GaslessIntent["order"] {
   return Object.fromEntries(Object.entries(order).map(([k, v]) => [k, String(v)])) as GaslessIntent["order"];
 }
 
+/** This browser's gasless exits, read-only (no relayer polling): for components that only show their state. */
+export function useGaslessIntents(): GaslessIntent[] {
+  return useSyncExternalStore(subscribe, load, () => EMPTY);
+}
+
 /** Starts gasless exits (withdraw to router + one signature) and keeps polling the relayer until each is final. */
 export function useGaslessExit() {
   const { address, chainId } = useAccount();
@@ -105,7 +110,7 @@ export function useGaslessExit() {
   const { signTypedDataAsync } = useSignTypedData();
   const child = usePublicClient({ chainId: xaiTestnet.id });
   const parent = usePublicClient({ chainId: arbitrumSepolia.id });
-  const intents = useSyncExternalStore(subscribe, load, () => EMPTY);
+  const intents = useGaslessIntents();
 
   const poll = useCallback(async () => {
     const due = load().filter(needsRelay);
