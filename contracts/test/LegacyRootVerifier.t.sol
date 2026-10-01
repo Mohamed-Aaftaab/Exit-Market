@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {LegacyNode} from "../interfaces/IArbitrumBridge.sol";
 import {LegacyRootVerifier} from "../verifiers/LegacyRootVerifier.sol";
 import {MockLegacyRollup, MockOutbox} from "./mocks/MockArbitrum.sol";
 
@@ -176,6 +177,41 @@ contract LegacyRootVerifierTest is Test {
         rollup.setFirstUnresolvedNode(a + 1);
         _assertInvalid(a); // resolved without an Outbox root: rejected
         _assertInvalid(a + 1); // never created
+    }
+
+    /// The same-block scan stops at the first node from another block: a doomed node created in the parent's block
+    /// (a child of an older confirmed node) is no rival of a child created later.
+    function test_theSameBlockScanStopsAtANodeFromAnotherBlock() public {
+        uint64 confirmed = _create(0);
+        rollup.setLatestConfirmed(confirmed);
+        rollup.setFirstUnresolvedNode(confirmed + 1);
+        _nextBlock();
+        uint64 parent = _create(confirmed);
+        uint64 doomed = _create(0); // same block as `parent`, on a dead branch
+        _nextBlock();
+        uint64 child = _create(parent);
+
+        _assertValid(child);
+        _assertValid(parent);
+        _assertInvalid(doomed);
+    }
+
+    function test_isRootRejectedOnlyForAResolvedNodeWhoseRootNeverReachedTheOutbox() public {
+        uint64 a = _create(0);
+        assertFalse(verifier.isRootRejected(address(rollup), address(outbox), _root(a), a), "unresolved");
+        rollup.setFirstUnresolvedNode(a + 1);
+        assertTrue(verifier.isRootRejected(address(rollup), address(outbox), _root(a), a), "resolved, no root");
+        outbox.setRoot(_root(a), BLOCK_HASH);
+        assertFalse(verifier.isRootRejected(address(rollup), address(outbox), _root(a), a), "confirmed");
+    }
+
+    /// RollupCore never links a node to a parent that is not older; a rollup reporting one is refused, not looped on.
+    function test_aMalformedParentLinkIsRefused() public {
+        uint64 a = _create(0);
+        LegacyNode memory node = rollup.getNode(a);
+        node.prevNum = a; // its own parent
+        vm.mockCall(address(rollup), abi.encodeCall(MockLegacyRollup.getNode, (a)), abi.encode(node));
+        _assertInvalid(a);
     }
 
     function test_aWrongCommitmentIsInvalid() public {

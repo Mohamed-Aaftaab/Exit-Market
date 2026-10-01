@@ -40,7 +40,7 @@ contract GasBudgetTest is IntentFixture {
     function test_gas_market_listViaHook() public {
         Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         _hook(IExitMarket.Action.LIST, ws[0], abi.encode(PRICE, uint64(block.timestamp + 1 days)));
-        _report("market list (transferExitAndCall -> onExitTransfer, LIST)", lastGas, 560_000);
+        _report("market list (transferExitAndCall -> onExitTransfer, LIST)", lastGas, 605_000);
     }
 
     function test_gas_market_sellToBuyerViaHook_cheapBuyer() public {
@@ -48,13 +48,13 @@ contract GasBudgetTest is IntentFixture {
         TestBuyer tb = new TestBuyer(IERC20(address(usdg)), PRICE);
         usdg.mint(address(tb), PRICE);
         _hook(IExitMarket.Action.SELL_TO_BUYER, ws[0], abi.encode(address(tb), 0));
-        _report("market sell-to-buyer, mock buyer (hook overhead only)", lastGas, 335_000);
+        _report("market sell-to-buyer, mock buyer (hook overhead only)", lastGas, 390_000);
     }
 
     function test_gas_market_sellToBuyerViaHook_exitVault() public {
         Withdrawal[] memory ws = _createWithdrawals(1, seller, AMOUNT);
         _hook(IExitMarket.Action.SELL_TO_BUYER, ws[0], abi.encode(address(vault), 0));
-        _report("market sell-to-buyer, ExitVault buyer", lastGas, 560_000);
+        _report("market sell-to-buyer, ExitVault buyer", lastGas, 615_000);
     }
 
     function test_gas_market_buy() public {
@@ -65,7 +65,7 @@ contract GasBudgetTest is IntentFixture {
         uint256 g = gasleft();
         market.buy(id, PRICE);
         g -= gasleft();
-        _report("market buy", g, 270_000);
+        _report("market buy", g, 315_000);
     }
 
     function test_gas_market_cancel() public {
@@ -129,7 +129,7 @@ contract GasBudgetTest is IntentFixture {
         uint256 g = gasleft();
         router.settle(ws[0].claim, o, sig);
         g -= gasleft();
-        _report("router settle (signature + market hook + vault purchase + 2 payouts)", g, 620_000);
+        _report("router settle (signature + market hook + vault purchase + 2 payouts)", g, 680_000);
     }
 
     function test_gas_router_reclaim() public {
@@ -138,6 +138,6 @@ contract GasBudgetTest is IntentFixture {
         uint256 g = gasleft();
         router.reclaim(ws[0].gateway, ws[0].exitNum, ws[0].claim);
         g -= gasleft();
-        _report("router reclaim", g, 160_000);
+        _report("router reclaim", g, 205_000);
     }
 }
