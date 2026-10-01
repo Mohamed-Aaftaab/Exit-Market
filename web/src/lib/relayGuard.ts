@@ -10,6 +10,8 @@ export const MIN_RELAYER_FEE = 20_000n; // 0.02 USDG, the fee the web app signs
 const MAX_DEADLINE_AHEAD_S = 7n * 24n * 60n * 60n;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_REQUESTS = 20;
+/** Past this many tracked clients, entries whose window has passed are dropped (bounded memory per instance). */
+const MAX_TRACKED_CLIENTS = 10_000;
 const UINT256_MAX = (1n << 256n) - 1n;
 
 export interface RelayRequest {
@@ -64,8 +66,20 @@ export function parseRelayRequest(body: unknown, expect: { gateway: Address; buy
 
 const hits = new Map<string, number[]>();
 
+function pruneStale(nowMs: number): void {
+  for (const [key, times] of hits) {
+    if (times.every((t) => nowMs - t >= RATE_WINDOW_MS)) hits.delete(key);
+  }
+}
+
+/** Number of clients the limiter currently remembers (for tests and monitoring). */
+export function trackedClientCount(): number {
+  return hits.size;
+}
+
 /** Sliding-window limit per client key; true when the request may proceed. */
 export function allowRequest(clientKey: string, nowMs = Date.now()): boolean {
+  if (hits.size >= MAX_TRACKED_CLIENTS) pruneStale(nowMs);
   const recent = (hits.get(clientKey) ?? []).filter((t) => nowMs - t < RATE_WINDOW_MS);
   if (recent.length >= RATE_MAX_REQUESTS) {
     hits.set(clientKey, recent);

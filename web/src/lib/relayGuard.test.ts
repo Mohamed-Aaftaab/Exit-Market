@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { getAddress } from "viem";
 import deployment from "../../../deployments/arbitrumSepolia.json" with { type: "json" };
 import { XAI_TESTNET } from "../../../scripts/lib/networks.ts";
-import { MIN_RELAYER_FEE, allowRequest, parseRelayRequest, runExclusive } from "./relayGuard.ts";
+import { MIN_RELAYER_FEE, allowRequest, parseRelayRequest, runExclusive, trackedClientCount } from "./relayGuard.ts";
 
 // The relayer pins the live gateway and vault, so the test uses the same sources the app does.
 const GATEWAY = XAI_TESTNET.tokenBridge.parentErc20Gateway;
@@ -83,4 +83,13 @@ test("dedupes concurrent settlements of the same withdrawal and serializes the r
   release();
   assert.deepEqual(await Promise.all([first, second]), ["a", "b"]);
   assert.deepEqual(order, ["a", "b"], "b waited for a");
+});
+
+test("the rate limiter forgets clients whose window has passed once it tracks too many", () => {
+  const start = 10_000_000;
+  for (let i = 0; i < 10_000; i++) allowRequest(`stale-${i}`, start);
+  assert.ok(trackedClientCount() >= 10_000);
+  // A minute later every one of those windows has passed: the next request prunes them.
+  assert.equal(allowRequest("fresh", start + 61_000), true);
+  assert.ok(trackedClientCount() < 100, `still tracking ${trackedClientCount()}`);
 });
