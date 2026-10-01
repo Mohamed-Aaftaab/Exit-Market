@@ -275,8 +275,9 @@ export function toExitProof(
 }
 
 /**
- * Builds everything ExitMarket needs to verify a withdrawal against a PENDING node of a legacy (pre-BOLD) rollup,
- * starting from the child-chain withdrawal transaction hash. For BOLD rollups see boldProof.ts.
+ * Builds everything ExitMarket needs to verify a withdrawal against a node of a legacy (pre-BOLD) rollup, starting from
+ * the child-chain withdrawal transaction hash: a confirmed covering node when one exists, else the earliest pending one
+ * (see findCoveringNode). For BOLD rollups see boldProof.ts.
  */
 export async function buildExitProof(params: {
   parent: PublicClient;

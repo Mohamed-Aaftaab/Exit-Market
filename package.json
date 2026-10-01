@@ -11,7 +11,7 @@
     "test:sol": "hardhat test solidity",
     "web:dev": "npm run dev -w web",
     "web:build": "npm run build -w web",
-    "test:fork": "FORK_TESTS=1 hardhat test solidity",
+    "test:fork": "node scripts/dev/forkTests.ts",
     "test:web": "node --test \"web/src/**/*.test.ts\"",
     "test:lib": "node --test \"scripts/lib/*.test.ts\"",
     "typecheck": "tsc --noEmit && npx next typegen web && tsc --noEmit -p web",

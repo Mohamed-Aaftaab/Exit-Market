@@ -1,7 +1,8 @@
+/** Lists every Xai Testnet gateway withdrawal whose Outbox leaf is still unspent. Usage: node scripts/dev/findUnspentExits.ts */
 import { createPublicClient, http, parseAbi, parseAbiItem } from "viem";
 import { arbitrumSepolia } from "viem/chains";
-import { XAI_TESTNET } from "../lib/networks.ts";
-const parent = createPublicClient({ chain: arbitrumSepolia, transport: http("https://sepolia-rollup.arbitrum.io/rpc") });
+import { ARBITRUM_SEPOLIA, XAI_TESTNET } from "../lib/networks.ts";
+const parent = createPublicClient({ chain: arbitrumSepolia, transport: http(ARBITRUM_SEPOLIA.rpcUrl) });
 const child = createPublicClient({ transport: http(XAI_TESTNET.rpcUrl) });
 const ev = parseAbiItem("event WithdrawalInitiated(address l1Token, address indexed _from, address indexed _to, uint256 indexed _l2ToL1Id, uint256 _exitNum, uint256 _amount)");
 const logs = await child.getLogs({ address: [XAI_TESTNET.tokenBridge.childErc20Gateway, XAI_TESTNET.tokenBridge.childCustomGateway], event: ev, fromBlock: 0n, toBlock: "latest" });
