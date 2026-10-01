@@ -16,18 +16,20 @@ export function MobileMenu({ active }: { active?: PageId }) {
   useEffect(() => {
     if (!isOpen) return;
     const burger = burgerRef.current;
-    const main = document.querySelector("main");
+    // Everything under the overlay leaves the tab order while the menu is open: the page content and the footer
+    // (outside <main>), so Tab never lands on a link hidden behind the sheet.
+    const behind = [...document.querySelectorAll<HTMLElement>("main, footer")];
     const close = () => setIsOpen(false);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     const onResize = () => window.innerWidth > MOBILE_MAX && close();
     document.body.classList.add("menu-open");
-    main?.setAttribute("inert", ""); // the page under the overlay is out of the tab order while the menu is open
+    behind.forEach((el) => el.setAttribute("inert", ""));
     sheetRef.current?.querySelector("a")?.focus();
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     return () => {
       document.body.classList.remove("menu-open");
-      main?.removeAttribute("inert");
+      behind.forEach((el) => el.removeAttribute("inert"));
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
       burger?.focus(); // the sheet unmounts: hand focus back instead of dropping it on <body>
