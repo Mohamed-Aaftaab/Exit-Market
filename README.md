@@ -209,17 +209,18 @@ pending node, or set `ARB_SEPOLIA_RPC_URL` to an archive node.
 ## Deployments (Arbitrum Sepolia, v4)
 
 Addresses are also in [`deployments/arbitrumSepolia.json`](deployments/arbitrumSepolia.json), with v1 to v3 under
-`history`. Source verified on Sourcify.
+`history`. Every Solidity contract's source is verified on Sourcify (exact match); the address links open it on
+Blockscout, which shows that verified source.
 
-| Contract | Address |
-|---|---|
-| ExitMarket (no owner) | [`0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0`](https://sepolia.arbiscan.io/address/0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0) |
-| ExitVault (evUSDG) | [`0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c`](https://sepolia.arbiscan.io/address/0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c) |
-| ExitIntentRouter | [`0x0705322c2917c8dbad0e49e668b7ef8921903a4e`](https://sepolia.arbiscan.io/address/0x0705322c2917c8dbad0e49e668b7ef8921903a4e) |
-| LegacyRootVerifier (rival check) | [`0x32c601710761500cd783187d5d60fb3d005b9375`](https://sepolia.arbiscan.io/address/0x32c601710761500cd783187d5d60fb3d005b9375) |
-| BoldRootVerifier | [`0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903`](https://sepolia.arbiscan.io/address/0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903) |
-| Stylus ExitProof (benchmark, not source-verified) | [`0x30ac015003186f187b9a11fff2781d55cc9e1394`](https://sepolia.arbiscan.io/address/0x30ac015003186f187b9a11fff2781d55cc9e1394) |
-| Payment token (Paxos USDG) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` |
+| Contract | Address (verified source) | Sourcify |
+|---|---|---|
+| ExitMarket (no owner) | [`0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0`](https://arbitrum-sepolia.blockscout.com/address/0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0?tab=contract) | [exact match](https://repo.sourcify.dev/421614/0x199b327bbf8051c7ad74d434fbdea8f801ccb0f0) |
+| ExitVault (evUSDG) | [`0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c`](https://arbitrum-sepolia.blockscout.com/address/0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c?tab=contract) | [exact match](https://repo.sourcify.dev/421614/0xbc42dd69e9bc4bf8ee32ddf9fe8c0dc9bb9e108c) |
+| ExitIntentRouter | [`0x0705322c2917c8dbad0e49e668b7ef8921903a4e`](https://arbitrum-sepolia.blockscout.com/address/0x0705322c2917c8dbad0e49e668b7ef8921903a4e?tab=contract) | [exact match](https://repo.sourcify.dev/421614/0x0705322c2917c8dbad0e49e668b7ef8921903a4e) |
+| LegacyRootVerifier (rival check) | [`0x32c601710761500cd783187d5d60fb3d005b9375`](https://arbitrum-sepolia.blockscout.com/address/0x32c601710761500cd783187d5d60fb3d005b9375?tab=contract) | [exact match](https://repo.sourcify.dev/421614/0x32c601710761500cd783187d5d60fb3d005b9375) |
+| BoldRootVerifier | [`0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903`](https://arbitrum-sepolia.blockscout.com/address/0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903?tab=contract) | [exact match](https://repo.sourcify.dev/421614/0xa44d3b2dd5d3ac2990dd9d4fd848576f210fc903) |
+| Stylus ExitProof (benchmark) | [`0x30ac015003186f187b9a11fff2781d55cc9e1394`](https://arbitrum-sepolia.blockscout.com/address/0x30ac015003186f187b9a11fff2781d55cc9e1394) | not source-verified |
+| Payment token (Paxos USDG) | `0xFFC95faa3d63Cde504a05B567C600B78C0b41892` | |
 
 Allowed gateways (frozen): Xai Testnet standard `0xCcB451…1256` and custom `0x04e14E…5D88`.
 
