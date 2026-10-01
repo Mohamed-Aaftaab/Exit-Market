@@ -8,7 +8,7 @@
  *               at cost (it stays collectable if it pays out later), whether or not the confirmed root has reached
  *               its index yet. The decision table is keeperStep (scripts/lib/keeperPlan.ts, tested)
  * Permissionless: anyone can run it with any funded key (KEEPER_PRIVATE_KEY, else DEPLOYER_PRIVATE_KEY).
- * Usage: node scripts/keeper.ts [--loop]
+ * Usage: node scripts/keeper.ts [--loop | --minutes N]   (a pass every 5 minutes; --minutes stops after about N)
  */
 import { BaseError, encodeAbiParameters, formatUnits, getAbiItem, keccak256, type Hash, type Hex } from "viem";
 import { exitMarketAbi, exitVaultAbi } from "./lib/abis.ts";
@@ -174,9 +174,20 @@ export async function runOnce({ clients = getClients(KEEPER_KEYS), deployment = 
   return { verified: latest.size, failed };
 }
 
+/** `--minutes N`: loop like --loop, but stop once another pass would start after N minutes (a CI job's budget). */
+function loopMinutes(argv: readonly string[]): number | undefined {
+  const at = argv.indexOf("--minutes");
+  if (at < 0) return undefined;
+  const minutes = Number(argv[at + 1]);
+  if (!(minutes > 0)) throw new Error("--minutes needs a positive number");
+  return minutes;
+}
+
 if (import.meta.main) {
-  const loop = process.argv.includes("--loop");
-  do {
+  const minutes = loopMinutes(process.argv);
+  const loop = process.argv.includes("--loop") || minutes !== undefined;
+  const stopAt = minutes === undefined ? Number.POSITIVE_INFINITY : Date.now() + minutes * 60_000;
+  for (;;) {
     try {
       const run = await runOnce();
       if (run.failed > 0 && !loop) process.exitCode = 1;
@@ -184,6 +195,7 @@ if (import.meta.main) {
       console.error(errorMessage(err));
       if (!loop) process.exitCode = 1;
     }
-    if (loop) await new Promise((r) => setTimeout(r, LOOP_MS));
-  } while (loop);
+    if (!loop || Date.now() + LOOP_MS > stopAt) break;
+    await new Promise((r) => setTimeout(r, LOOP_MS));
+  }
 }

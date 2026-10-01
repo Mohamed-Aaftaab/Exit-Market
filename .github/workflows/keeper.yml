@@ -1,19 +1,23 @@
 name: Keeper
 
-# The permissionless keeper (scripts/keeper.ts) on a schedule, so the live deployment needs nobody's laptop: once an
-# exit's challenge window ends it executes the exit through the Outbox, collects it for the vault (refilling the
-# liquidity the next seller is paid from), settles listings that paid out and writes off exits from rejected nodes.
-# It signs with a dedicated testnet key holding a little Arbitrum Sepolia ETH (repository secret KEEPER_PRIVATE_KEY),
-# never the deployer's. GitHub may start scheduled runs late; anyone can also run the keeper themselves.
+# The permissionless keeper (scripts/keeper.ts), hosted so the live deployment needs nobody's laptop: once an exit's
+# challenge window ends it executes the exit through the Outbox, collects it for the vault (refilling the liquidity
+# the next seller is paid from), settles listings that paid out and writes off exits from rejected nodes.
+#
+# Each run keeps the keeper going (a pass every 5 minutes) for 55 minutes, then dispatches the next run, so it runs
+# around the clock without depending on GitHub's cron, which may start late or skip. The hourly schedule only restarts
+# the chain if it ever breaks (a failed or cancelled run does not hand over, so cancelling a run stops it). It signs with a dedicated testnet key holding a
+# little Arbitrum Sepolia ETH (repository secret KEEPER_PRIVATE_KEY), never the deployer's.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write # to dispatch the next run (a GITHUB_TOKEN workflow_dispatch does start a new run)
 
-# One pass at a time: a slow pass is never raced by the next one with the same key.
+# One keeper at a time: the next run waits for the current one instead of racing its key.
 concurrency:
   group: keeper
   cancel-in-progress: false
@@ -21,7 +25,7 @@ concurrency:
 jobs:
   keeper:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -29,6 +33,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node scripts/keeper.ts
+      - run: node scripts/keeper.ts --minutes 55
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
+      # Only after a successful run: a broken run must not respawn every minute (the hourly schedule retries instead).
+      - name: Hand over to the next run
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        run: gh workflow run keeper.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

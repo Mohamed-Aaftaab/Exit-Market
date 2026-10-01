@@ -26,9 +26,9 @@ Live on **Arbitrum Sepolia** with **Xai Testnet** (Orbit L3) as the child chain 
    relayer settles it as soon as Xai's next node posts (~15 minutes). Selling to the vault yourself, listing at
    your price or buying a listing are one transaction each on Arbitrum Sepolia and need a little ETH there
    ([Alchemy faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)). The scripts in
-   [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key. A keeper runs every
-   10 minutes on GitHub Actions ([`keeper.yml`](.github/workflows/keeper.yml)): once an exit's challenge window
-   ends it executes it, so the vault collects face value and its liquidity refills for the next seller.
+   [`scripts/demo/`](scripts/demo) run the same loop from a terminal with a funded test key. A keeper runs around the
+   clock on GitHub Actions ([`keeper.yml`](.github/workflows/keeper.yml), a pass every 5 minutes): once an exit's
+   challenge window ends it executes it, so the vault collects face value and its liquidity refills for the next seller.
 
 **Testnet caveat.** Xai Testnet's challenge period is 150 L1 blocks (about 30 minutes), so the live demo and the
 Explorer show minutes. Arbitrum One and mainnet Orbit chains use 45,818 blocks, about 6.4 days, which is the wait
