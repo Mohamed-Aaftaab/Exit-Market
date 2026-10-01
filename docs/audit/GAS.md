@@ -114,7 +114,7 @@ The fork tests follow mainnet's latest block, and the pending chain shortens as 
 `scripts/dev/makeArbOneFixture.ts`): a real pending withdrawal under a **134-deep** pending chain costs
 **1,344,244** gas for `verifyRoot` and **1,733,628** for the full listing. Once the fixture's own assertion
 confirms (about 6.4 days later) the tests skip with a message pointing at the generator. Run them with
-`FORK_TESTS=1 npx hardhat test solidity contracts/test/fork/ArbOneBoldFork.t.sol`.
+`npm run test:fork -- contracts/test/fork/ArbOneBoldFork.t.sol`.
 
 ## 4b. The legacy rival walk on the live Xai rollup (Arbitrum Sepolia fork)
 
@@ -122,7 +122,7 @@ v4's `LegacyRootVerifier` walks `prevNum` from the exit's node to the latest con
 node once (plus a same-block scan only when siblings share a block). For a real pending Xai Testnet withdrawal
 (fixture regenerated 2026-10-01, node 61962): **2 pending levels, 56,226 gas cold** for `verifyRoot`. Each extra
 pending level adds one `getNode` read (roughly 15k gas cold); a 7-day window with hourly nodes is about 170 levels.
-`FORK_TESTS=1 npx hardhat test solidity contracts/test/fork/XaiFork.t.sol` (the fork block must be recent unless
+`npm run test:fork -- contracts/test/fork/XaiFork.t.sol` (the fork block must be recent unless
 `ARB_SEPOLIA_RPC_URL` points at an archive node).
 
 ## 5. Stylus vs Solidity Merkle verifier

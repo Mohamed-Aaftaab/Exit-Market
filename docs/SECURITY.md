@@ -159,6 +159,12 @@ Residual risks of these fixes (accepted):
   a per-IP limit and one drip at a time per instance. Two requests for the same address landing on two instances at
   the same moment could both pass before either transfer lands (at most one extra drip); many fresh addresses can
   drain it, after which it answers 503. It holds a few testnet dollars by design.
+- **Hosted keeper** (`.github/workflows/keeper.yml`). The keeper is permissionless (anyone can run
+  `scripts/keeper.ts`), so hosting it adds liveness, not trust. It signs with a dedicated wallet whose key is a GitHub
+  Actions repository secret; the wallet holds only a little Arbitrum Sepolia ETH for gas and has no role in any
+  contract, so a stolen key loses that gas money and nothing else. The job keeps the token GitHub issues it out of
+  `.git/config` and installs dependencies without their install scripts. If the hosted keeper stops, nothing is
+  lost: exits stay collectable and anyone can run it; the vault's idle USDG just refills more slowly meanwhile.
 - **Empty hook data.** `transferExitAndCall(…, market, "", "")` with no hook data hands the exit to the market
   without a listing, and the tokens are then stuck. The app and scripts always send hook data.
 - **Outbox upgrades.** Sources are frozen per gateway; a rollup outbox swap would require a new market deployment.

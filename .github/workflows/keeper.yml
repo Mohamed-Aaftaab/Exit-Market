@@ -4,7 +4,7 @@ name: Keeper
 # challenge window ends it executes the exit through the Outbox, collects it for the vault (refilling the liquidity
 # the next seller is paid from), settles listings that paid out and writes off exits from rejected nodes.
 #
-# Each run keeps the keeper going (a pass every 5 minutes) for 55 minutes, then dispatches the next run, so it runs
+# Each run keeps the keeper going (a pass every 5 minutes) for up to 55 minutes, then dispatches the next run, so it runs
 # around the clock without depending on GitHub's cron, which may start late or skip. A failed run still hands over,
 # after a 5-minute pause, so a transient error (an npm or RPC outage) cannot stop the chain and a broken setup retries
 # slowly instead of respawning at once. Cancelling a run by hand stops the chain; the hourly schedule restarts it if
@@ -45,9 +45,15 @@ jobs:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
       - name: Hand over to the next run
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        # Retried: one failed API call here would otherwise end the chain (GitHub's cron has not been a reliable backup).
         run: |
           if [ "$JOB_STATUS" != "success" ]; then sleep 300; fi
-          gh workflow run keeper.yml --ref main --repo "$GITHUB_REPOSITORY"
+          for attempt in 1 2 3; do
+            gh workflow run keeper.yml --ref main --repo "$GITHUB_REPOSITORY" && exit 0
+            echo "dispatch attempt $attempt failed"
+            sleep 30
+          done
+          exit 1
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}

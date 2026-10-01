@@ -12,7 +12,7 @@ import {ArbOneExitFixture as F} from "./ArbOneExitFixture.sol";
 
 /// @notice Arbitrum One (BOLD) on an Ethereum mainnet fork: a REAL pending token withdrawal is proven against
 ///         a REAL pending BOLD assertion and listed through the REAL Arbitrum One L1 gateway.
-/// @dev Needs network: `FORK_TESTS=1 npx hardhat test solidity --grep arbOne`. Forks latest (pending assertions
+/// @dev Needs network: `npm run test:fork -- --grep arbOne`. Forks latest (pending assertions
 ///      stay pending ~6.4 days; regenerate the fixture with scripts/dev/makeArbOneFixture.ts afterwards).
 contract ArbOneBoldForkTest is Test {
     string private constant RPC = "https://ethereum-rpc.publicnode.com";
